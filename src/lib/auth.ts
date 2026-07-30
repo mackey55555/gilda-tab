@@ -42,3 +42,13 @@ export async function requireStaff(): Promise<CurrentStaff> {
   if (!staff) redirect("/login");
   return staff;
 }
+
+/**
+ * /admin 配下の認可。proxy.ts は認証しか見ていないのでここで role を確認する。
+ * DB 側も RLS と各 RPC で admin を要求しているため、これは UI 上のガード。
+ */
+export async function requireAdmin(): Promise<CurrentStaff> {
+  const staff = await requireStaff();
+  if (staff.role !== "admin") redirect("/floor");
+  return staff;
+}

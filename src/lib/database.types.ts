@@ -344,6 +344,11 @@ export type Database = {
       }
       current_business_date: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
+      move_product: {
+        Args: { direction: string; target_product_id: string }
+        Returns: undefined
+      }
+      product_is_used: { Args: { target_product_id: string }; Returns: boolean }
       set_staff_role: {
         Args: { new_role: string; target_staff_id: string }
         Returns: undefined
@@ -351,6 +356,16 @@ export type Database = {
       settle_tabs: {
         Args: { payment_method?: string; tab_ids: string[] }
         Returns: string
+      }
+      staff_directory: {
+        Args: never
+        Returns: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          role: string
+        }[]
       }
       tab_business_day_is_open: {
         Args: { target_tab_id: string }
