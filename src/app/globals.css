@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* 薄暗い店内で見る前提のダークテーマ。/floor の配色をここで一元管理する。 */
+@theme {
+  --color-canvas: #100e0c;
+  --color-surface: #1b1815;
+  --color-raised: #272320;
+  --color-line: #3b3430;
+  --color-ink: #f4efe6;
+  --color-ink-muted: #a29b91;
+  --color-accent: #d8a33f;
+  --color-accent-ink: #191307;
+  --color-danger: #e2574c;
+
+  /* タップ領域の最低サイズ 44px */
+  --spacing-tap: 2.75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    /* 引っ張って画面が跳ねるのを防ぐ（片手操作でのミスタップ対策） */
+    overscroll-behavior-y: none;
+  }
+
+  /* 連続タップでダブルタップズームが誘発されないようにする */
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  input,
+  button,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+/* iPhone のホームバー領域を避ける */
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
