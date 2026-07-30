@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { currentBusinessDate } from "@/lib/business-date";
 import { formatBusinessDate } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -17,10 +18,8 @@ export function OpenDayPanel({ staffName }: { staffName: string }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // date は DB 側で JST の当日が入る
-  const today = formatBusinessDate(
-    new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }),
-  );
+  // 実際に保存される日付は DB の current_business_date() が決める。表示を合わせるため同じ規則で計算する。
+  const today = formatBusinessDate(currentBusinessDate());
 
   async function openBusinessDay() {
     setOpening(true);

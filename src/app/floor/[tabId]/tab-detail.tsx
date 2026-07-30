@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { formatYen } from "@/lib/format";
+import { formatYen, guestLabel } from "@/lib/format";
 import { createLocalId } from "@/lib/local-id";
 import { groupOrderItems, sumItems, type OrderGroup } from "@/lib/order-groups";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { LocalOrderItem, OrderItem, Product } from "@/lib/types";
+
+import { SettleSheet } from "../settle-sheet";
 
 import { FreeAmountSheet } from "./free-amount-sheet";
 import { GuestNameEditor } from "./guest-name-editor";
@@ -44,6 +46,9 @@ export function TabDetail({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [settleError, setSettleError] = useState<string | null>(null);
 
   const groups = useMemo(() => groupOrderItems(items), [items]);
   const total = sumItems(items);
@@ -212,6 +217,23 @@ export function TabDetail({
     router.replace("/floor");
   }
 
+  async function settle() {
+    setSettling(true);
+    setSettleError(null);
+
+    const supabase = getSupabaseBrowserClient();
+    // 合計はサーバ側で明細から再計算される。画面が古くても正しい金額が記録される。
+    const { error: rpcError } = await supabase.rpc("settle_tabs", { tab_ids: [tabId] });
+
+    if (rpcError) {
+      setSettling(false);
+      setSettleError(rpcError.message);
+      return;
+    }
+
+    router.replace("/floor");
+  }
+
   const lockedMessage = paid
     ? "会計済みの伝票です"
     : !editable
@@ -295,14 +317,20 @@ export function TabDetail({
       <div className="sticky bottom-0 border-t border-line bg-surface px-5 pt-3 pb-safe">
         <button
           type="button"
-          disabled
+          onClick={() => {
+            setSettleError(null);
+            setSettleOpen(true);
+          }}
+          disabled={!editable || items.length === 0}
           className="min-h-14 w-full rounded-xl bg-accent text-lg font-bold text-accent-ink disabled:opacity-40"
         >
           会計する（{formatYen(total)}）
         </button>
-        <p className="mt-1 text-center text-xs text-ink-muted">
-          会計処理は次のステップで実装します
-        </p>
+        {editable && items.length === 0 && (
+          <p className="mt-1 text-center text-xs text-ink-muted">
+            注文が無い伝票は会計できません
+          </p>
+        )}
       </div>
 
       {sheetOpen && (
@@ -312,6 +340,22 @@ export function TabDetail({
             setSheetOpen(false);
             addOne({ productId: null, name, price });
           }}
+        />
+      )}
+
+      {settleOpen && (
+        <SettleSheet
+          title={`${guestLabel(guestName, seq)} の会計`}
+          lines={groups.map((group) => ({
+            key: group.key,
+            label: `${group.name} × ${group.qty}`,
+            amount: group.price * group.qty,
+          }))}
+          total={total}
+          pending={settling}
+          error={settleError}
+          onConfirm={() => void settle()}
+          onClose={() => setSettleOpen(false)}
         />
       )}
     </main>

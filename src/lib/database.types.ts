@@ -264,6 +264,13 @@ export type Database = {
             foreignKeyName: "tabs_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
+            referencedRelation: "payment_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tabs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
           },
@@ -271,6 +278,27 @@ export type Database = {
       }
     }
     Views: {
+      payment_summaries: {
+        Row: {
+          business_day_id: string | null
+          guest_labels: string[] | null
+          id: string | null
+          method: string | null
+          paid_at: string | null
+          staff_name: string | null
+          tab_count: number | null
+          total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_business_day_id_fkey"
+            columns: ["business_day_id"]
+            isOneToOne: false
+            referencedRelation: "business_days"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tab_summaries: {
         Row: {
           business_day_id: string | null
@@ -296,6 +324,13 @@ export type Database = {
             foreignKeyName: "tabs_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
+            referencedRelation: "payment_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tabs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
           },
@@ -307,16 +342,22 @@ export type Database = {
         Args: { target_business_day_id: string }
         Returns: boolean
       }
+      current_business_date: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       set_staff_role: {
         Args: { new_role: string; target_staff_id: string }
         Returns: undefined
+      }
+      settle_tabs: {
+        Args: { payment_method?: string; tab_ids: string[] }
+        Returns: string
       }
       tab_business_day_is_open: {
         Args: { target_tab_id: string }
         Returns: boolean
       }
       tab_is_empty: { Args: { target_tab_id: string }; Returns: boolean }
+      void_payment: { Args: { payment_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

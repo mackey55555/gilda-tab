@@ -33,6 +33,31 @@ export type TabSummary = {
   createdAt: string;
 };
 
+/** 会計済み一覧に出す情報。payment_summaries ビューの行を絞ったもの。 */
+export type PaymentSummary = {
+  id: string;
+  total: number;
+  paidAt: string;
+  staffName: string | null;
+  tabCount: number;
+  guestLabels: string[];
+};
+
+type PaymentSummaryRow = Database["public"]["Views"]["payment_summaries"]["Row"];
+
+export function toPaymentSummary(row: PaymentSummaryRow): PaymentSummary | null {
+  if (row.id === null || row.paid_at === null) return null;
+
+  return {
+    id: row.id,
+    total: row.total ?? 0,
+    paidAt: row.paid_at,
+    staffName: row.staff_name,
+    tabCount: row.tab_count ?? 0,
+    guestLabels: row.guest_labels ?? [],
+  };
+}
+
 type TabSummaryRow = Database["public"]["Views"]["tab_summaries"]["Row"];
 
 /**

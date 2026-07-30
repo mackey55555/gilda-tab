@@ -1,6 +1,6 @@
 import { requireStaff } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { toTabSummary } from "@/lib/types";
+import { toPaymentSummary, toTabSummary } from "@/lib/types";
 
 import { OpenDayPanel } from "./open-day-panel";
 import { TabList } from "./tab-list";
@@ -19,16 +19,27 @@ export default async function FloorPage() {
     return <OpenDayPanel staffName={staff.name} />;
   }
 
-  const { data: rows } = await supabase
-    .from("tab_summaries")
-    .select("*")
-    .eq("business_day_id", businessDay.id)
-    .eq("status", "open")
-    .order("created_at", { ascending: true });
+  const [{ data: tabRows }, { data: paymentRows }] = await Promise.all([
+    supabase
+      .from("tab_summaries")
+      .select("*")
+      .eq("business_day_id", businessDay.id)
+      .eq("status", "open")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("payment_summaries")
+      .select("*")
+      .eq("business_day_id", businessDay.id)
+      .order("paid_at", { ascending: false }),
+  ]);
 
-  const initialTabs = (rows ?? [])
+  const initialTabs = (tabRows ?? [])
     .map(toTabSummary)
     .filter((tab): tab is NonNullable<typeof tab> => tab !== null);
+
+  const initialPayments = (paymentRows ?? [])
+    .map(toPaymentSummary)
+    .filter((payment): payment is NonNullable<typeof payment> => payment !== null);
 
   return (
     <TabList
@@ -36,6 +47,7 @@ export default async function FloorPage() {
       businessDate={businessDay.date}
       staffName={staff.name}
       initialTabs={initialTabs}
+      initialPayments={initialPayments}
     />
   );
 }
