@@ -84,6 +84,8 @@
 - **`tabs.status` は `payment_id` からの生成列**（`open`/`paid`）。直接書き込まない。会計取消は `payments` の行削除だけで伝票が open に戻る。
 - **伝票の void 状態は持たない**。誤作成の後始末は「明細を削除 → 伝票を削除」。明細が残っている伝票は RLS で削除不可。
 - **営業日**: `date` はユニーク、open は同時1件のみ。open/close は全スタッフ可（`/floor` に営業開始ボタン）。**closed になった営業日に紐づく tabs/order_items/payments の書き込みは admin のみ**。
+- **「当日」を日付比較で判定しない。** 営業は 24 時を越えるため、対象の特定は必ず `business_days.status = 'open'` と `business_day_id` で行う。営業日の日付そのものは `current_business_date()`（**JST から 6 時間戻した日付＝朝6時切り替わり**）で決まり、画面側の表示は `src/lib/business-date.ts` が同じ規則で計算する。**片方だけ変えないこと**。
+- **会計は `settle_tabs(tab_ids, payment_method)` RPC のみ**を使う。payments 作成と複数伝票のクローズを1トランザクションで行い、**合計は必ずサーバ側で明細から再計算**する（クライアントの金額は信用しない）。取り消しは `void_payment(payment_id)`。
 - **仮名**: `tabs.seq` を営業日ごとにトリガ採番（アドバイザリロックで衝突回避）。表示は `guest_name ?? '客' + seq` で「客1」「客2」。
 - **`products.category` は自由入力の text**。`sort_order` はカテゴリを跨いだグローバル順1本。
 - **`staff.role` の変更は `public.set_staff_role(uuid, text)` RPC 経由のみ**。`authenticated` には `staff.name` 列だけ UPDATE 権限を付与しているため、自己昇格は不可能。
