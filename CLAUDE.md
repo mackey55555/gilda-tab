@@ -45,6 +45,16 @@
 - 認証は Supabase Auth（メール+パスワード）。スタッフ = ログインユーザー。
 - オフライン対応はしない。楽観的 UI 更新 ＋ 失敗時リトライ表示のみ。
 
+## Next.js 16 の注意点
+
+学習データにある Next.js とは規約が変わっている。**実装前に `node_modules/next/dist/docs/` の該当ページを読む**（`create-next-app` が生成する AGENTS.md の指示）。特に:
+
+- **`middleware.ts` は無い。`src/proxy.ts` に `export async function proxy()` を書く**（15 以前の Middleware が Proxy に改名）。
+- `cookies()` は非同期。`await cookies()` してから使う。**Server Component のレンダリング中は Cookie を書けない**ため、`@supabase/ssr` の `setAll` は try/catch で握り、トークン更新は `proxy.ts` に任せる。
+- `page.tsx` の `params` / `searchParams` は Promise。`await` して取り出す。
+- ビルドは Turbopack が既定。
+- 実機確認のため `next.config.ts` に `allowedDevOrigins`（プライベート IP）を入れている。
+
 ## Supabase の扱い
 
 - **キーは新形式（`sb_publishable_...` / `sb_secret_...`）のみを使う。** legacy の anon key / service_role JWT を前提にしたコードは書かない。
@@ -81,6 +91,9 @@
   ```sql
   update public.staff set role = 'admin' where id = (select id from auth.users where email = '<自分のメール>');
   ```
+- **`/floor` の書き込みはブラウザから supabase-js を直叩きする**（Server Action を挟まない）。「注文追加を2タップ以内・即反映」のため楽観的更新 → Realtime で他端末へ伝播させる。権限は RLS で担保。初期データ取得は Server Component 側。
+- `tabs.seq` はトリガ採番だが、型生成が必須項目にしてしまうため DB 側に `default 0` のプレースホルダを置いている。クライアントからは `seq` を渡さない。
+- `tabs.status` は生成列なので書き込むと Postgres がエラーを返す。型生成上は Insert/Update に現れるが**絶対に渡さない**。
 - RLS の回帰テストは `bash scripts/verify-rls.sh`（リモートに対して実行し、テストユーザー・データは自動削除される）。
 
 ## コーディング規約
@@ -90,6 +103,8 @@
 - Server Component を既定にし、`"use client"` は必要な葉コンポーネントだけに付ける。
 - 書き込み処理は原子性が必要なものは Postgres 関数（RPC）にまとめる（例: 会計＝payments 作成 + 複数 tabs のクローズ）。
 - `/floor`（スマホ・ダーク・タップ 44px 以上）と `/admin`（PC・サイドバー）は UI を共有しない。共通化するのはデータアクセス層のみ。
+- **Tailwind v4 の `@theme` で色トークンを増やすときは、既定ユーティリティ名と衝突させない。** 例えば `--color-base` を定義すると `text-base` がフォントサイズではなく**色**のユーティリティになり、黒文字が黒背景に乗る事故が起きた（`base` → `canvas` に改名して解消）。トークンを追加したら `.next/static` の CSS を grep して意図した定義になっているか確認する。
+- **secure context 限定の Web API を使わない。** 実機確認は `http://192.168.x.x` で行うため、`crypto.randomUUID()` や `crypto.subtle`、Service Worker などは `undefined` / 利用不可になる。一時 ID は `src/lib/local-id.ts` を使う。
 - ファイル名: コンポーネントは `kebab-case.tsx`、React コンポーネント名は `PascalCase`。
 - コメントは「なぜ」を書く。自明な処理の説明コメントは書かない。
 - 既存コードのスタイル（命名・構成・コメント密度）に合わせる。
