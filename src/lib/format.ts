@@ -4,6 +4,22 @@ export function formatYen(amount: number): string {
   return `${sign}¥${Math.abs(amount).toLocaleString("ja-JP")}`;
 }
 
+/** グラフの軸ラベル用。桁が多いと軸が読めなくなるので万単位に丸める。 */
+export function formatCompactYen(amount: number): string {
+  if (amount === 0) return "0";
+
+  const sign = amount < 0 ? "-" : "";
+  const abs = Math.abs(amount);
+
+  if (abs >= 10_000) {
+    const man = abs / 10_000;
+    // 1.5万 / 12万 のように、必要なときだけ小数第1位まで出す
+    return `${sign}${man >= 10 ? Math.round(man) : Math.round(man * 10) / 10}万`;
+  }
+
+  return `${sign}${abs.toLocaleString("ja-JP")}`;
+}
+
 /** 客名。未入力の伝票は営業日ごとの連番から「客1」「客2」を作る。 */
 export function guestLabel(guestName: string | null, seq: number): string {
   const trimmed = guestName?.trim();

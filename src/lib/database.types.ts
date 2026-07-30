@@ -349,6 +349,54 @@ export type Database = {
         Returns: undefined
       }
       product_is_used: { Args: { target_product_id: string }; Returns: boolean }
+      sales_by_day: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          avg_per_tab: number
+          business_date: string
+          business_day_id: string
+          item_count: number
+          status: string
+          tab_count: number
+          total: number
+        }[]
+      }
+      sales_by_hour: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          hour: number
+          qty: number
+          total: number
+        }[]
+      }
+      sales_by_product: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          category: string
+          name: string
+          product_id: string
+          qty: number
+          total: number
+        }[]
+      }
+      sales_items: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          amount: number
+          business_date: string
+          category: string
+          guest_name: string
+          item_id: string
+          item_name: string
+          ordered_at: string
+          price: number
+          qty: number
+          staff_name: string
+          tab_id: string
+          tab_seq: number
+          tab_status: string
+        }[]
+      }
       set_staff_role: {
         Args: { new_role: string; target_staff_id: string }
         Returns: undefined
