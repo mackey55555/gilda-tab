@@ -96,7 +96,14 @@
 - **`/floor` の書き込みはブラウザから supabase-js を直叩きする**（Server Action を挟まない）。「注文追加を2タップ以内・即反映」のため楽観的更新 → Realtime で他端末へ伝播させる。権限は RLS で担保。初期データ取得は Server Component 側。
 - `tabs.seq` はトリガ採番だが、型生成が必須項目にしてしまうため DB 側に `default 0` のプレースホルダを置いている。クライアントからは `seq` を渡さない。
 - `tabs.status` は生成列なので書き込むと Postgres がエラーを返す。型生成上は Insert/Update に現れるが**絶対に渡さない**。
-- RLS の回帰テストは `bash scripts/verify-rls.sh`（リモートに対して実行し、テストユーザー・データは自動削除される）。
+- **商品は注文実績があると削除できない**（RLS の delete ポリシーで `product_is_used()` を見ている）。無効化（`is_active = false`）に倒すこと。表示順の変更は `move_product(id, 'up'|'down')` RPC のみ（呼ぶたびに全体を 10 刻みへ正規化する）。
+- **`secret key` を使うのは `src/lib/supabase/admin.ts` 経由のスタッフ追加だけ**。auth.users の作成は通常クライアントでは不可能なため。それ以外は publishable key + RLS で行う。
+- 回帰テストは以下（いずれもリモートに対して実行し、テストユーザー・データは自動削除される）:
+  - `bash scripts/verify-rls.sh` … RLS 32項目
+  - `bash scripts/verify-settlement.sh` … 会計 RPC 24項目（open な営業日があると中断する）
+  - `bash scripts/verify-admin.sh` … /admin の権限と RPC 20項目
+  - `node scripts/verify-floor.cjs` / `node scripts/verify-admin-pages.cjs` … 画面描画（要 dev server）
+  - **検証スクリプトの後片付けは必ず「自分が作った行」だけを対象にする。** `business_day_id` などで括ると運用中のデータを巻き込む（実際に会計データを消す事故を起こした）。
 
 ## コーディング規約
 
