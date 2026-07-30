@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 検証用スクリプトはアプリのバンドルに入らない素の Node（CJS）なので対象外
+    "scripts/**",
   ]),
 ]);
 

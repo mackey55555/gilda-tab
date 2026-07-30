@@ -1,0 +1,189 @@
+/**
+ * /admin の画面描画と role による出し分けをエンドツーエンドで確認する回帰テスト。
+ *
+ * admin とスタッフの 2 つのセッションで同じ URL を開き、admin だけが管理画面に
+ * 入れることと、商品・スタッフ一覧が描画されることを確認する。
+ * 終了時にテストデータとテストユーザーは削除する。
+ *
+ * 事前に別ターミナルで `npm run dev` を起動しておくこと。
+ * 実行: node scripts/verify-admin-pages.cjs
+ *       BASE_URL=http://localhost:3001 node scripts/verify-admin-pages.cjs
+ */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const ROOT = path.join(__dirname, "..");
+const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+const PASSWORD = "gilda-test-pw-9182";
+
+const env = {};
+for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split("\n")) {
+  const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+  if (match) env[match[1]] = match[2].trim();
+}
+const URL_ = env.NEXT_PUBLIC_SUPABASE_URL;
+const PUB = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SECRET = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+
+const { createServerClient } = require(path.join(ROOT, "node_modules/@supabase/ssr"));
+
+let pass = 0;
+let fail = 0;
+function check(label, ok, detail) {
+  if (ok) {
+    pass += 1;
+    console.log(`  OK   ${label}`);
+  } else {
+    fail += 1;
+    console.log(`  NG   ${label}\n       -> ${detail}`);
+  }
+}
+
+/** React SSR がテキストノード境界に挟む <!-- --> を除去してから判定する */
+const strip = (html) => html.replaceAll("<!-- -->", "");
+
+const admin = (method, pathname, body) =>
+  fetch(`${URL_}/rest/v1${pathname}`, {
+    method,
+    headers: {
+      apikey: SECRET,
+      Authorization: `Bearer ${SECRET}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(async (res) => ({ status: res.status, body: await res.json().catch(() => null) }));
+
+async function makeSession(email, name) {
+  const created = await fetch(`${URL_}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: { apikey: SECRET, Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: { name },
+    }),
+  }).then((res) => res.json());
+
+  const jar = new Map();
+  const supabase = createServerClient(URL_, PUB, {
+    cookies: {
+      getAll: () => [...jar].map(([cookieName, value]) => ({ name: cookieName, value })),
+      setAll: (list) => {
+        for (const { name: cookieName, value } of list) jar.set(cookieName, value);
+      },
+    },
+  });
+  await supabase.auth.signInWithPassword({ email, password: PASSWORD });
+
+  const cookie = [...jar]
+    .map(([cookieName, value]) => `${cookieName}=${encodeURIComponent(value)}`)
+    .join("; ");
+
+  return { id: created.id, cookie };
+}
+
+const get = (pathname, cookie) =>
+  fetch(`${BASE}${pathname}`, { headers: { Cookie: cookie }, redirect: "manual" });
+
+(async () => {
+  console.log("=== セットアップ ===");
+  const adminUser = await makeSession("admin-page-test@example.com", "管理画面テスト");
+  const staffUser = await makeSession("staff-page-test@example.com", "一般画面テスト");
+  await admin("PATCH", `/staff?id=eq.${adminUser.id}`, { role: "admin" });
+  console.log(`  admin=${adminUser.id}`);
+  console.log(`  staff=${staffUser.id}`);
+
+  // role の変更をセッションに反映させるためログインし直す
+  const adminSession = await makeSessionExisting("admin-page-test@example.com");
+  const cookieAdmin = adminSession.cookie;
+
+  console.log("\n=== 権限による出し分け ===");
+  let res = await get("/admin/products", staffUser.cookie);
+  check(
+    "スタッフが /admin を開くと /floor にリダイレクトされる",
+    res.status === 307 && (res.headers.get("location") ?? "").includes("/floor"),
+    `${res.status} ${res.headers.get("location")}`,
+  );
+
+  res = await get("/admin", "");
+  check(
+    "未ログインは /login にリダイレクトされる",
+    res.status === 307 && (res.headers.get("location") ?? "").includes("/login"),
+    `${res.status} ${res.headers.get("location")}`,
+  );
+
+  res = await get("/admin", cookieAdmin);
+  check(
+    "/admin は /admin/products にリダイレクトされる",
+    res.status === 307 && (res.headers.get("location") ?? "").includes("/admin/products"),
+    `${res.status} ${res.headers.get("location")}`,
+  );
+
+  console.log("\n=== 商品マスタ ===");
+  res = await get("/admin/products", cookieAdmin);
+  let html = strip(await res.text());
+  check("admin は商品マスタを開ける", res.status === 200, `${res.status}`);
+  check("サイドバーの項目が出る", html.includes("商品マスタ") && html.includes("スタッフ"), "サイドバーなし");
+  check("seed 商品が一覧に出る", html.includes("生ビール"), "生ビールなし");
+  check("価格が表示される", html.includes("¥800"), "価格なし");
+  check("追加ボタンがある", html.includes("商品を追加"), "追加ボタンなし");
+  check("削除の可否が出し分けられる", html.includes("注文実績あり") || html.includes("削除"), "操作列なし");
+
+  console.log("\n=== スタッフ管理 ===");
+  res = await get("/admin/staff", cookieAdmin);
+  html = strip(await res.text());
+  check("admin はスタッフ一覧を開ける", res.status === 200, `${res.status}`);
+  check("メールアドレスが表示される", html.includes("admin-page-test@example.com"), "メールなし");
+  check("自分の行に「自分」が付く", html.includes("自分"), "自分マークなし");
+  check("追加フォームのボタンがある", html.includes("スタッフを追加"), "追加ボタンなし");
+
+  console.log("\n=== 未実装ページのプレースホルダ ===");
+  for (const [pathname, label] of [
+    ["/admin/sales", "売上集計"],
+    ["/admin/business-days", "営業日"],
+  ]) {
+    res = await get(pathname, cookieAdmin);
+    html = strip(await res.text());
+    check(`${pathname} が 200 で開く`, res.status === 200 && html.includes(label), `${res.status}`);
+  }
+
+  console.log("\n=== 後片付け ===");
+  for (const email of ["admin-page-test@example.com", "staff-page-test@example.com"]) {
+    const list = await fetch(`${URL_}/auth/v1/admin/users?page=1&per_page=200`, {
+      headers: { apikey: SECRET, Authorization: `Bearer ${SECRET}` },
+    }).then((r) => r.json());
+    const found = list.users.find((user) => user.email === email);
+    if (found) {
+      await fetch(`${URL_}/auth/v1/admin/users/${found.id}`, {
+        method: "DELETE",
+        headers: { apikey: SECRET, Authorization: `Bearer ${SECRET}` },
+      });
+    }
+  }
+  const staffLeft = await admin("GET", "/staff?select=id");
+  console.log(`  残 staff: ${staffLeft.body?.length ?? "?"} 件`);
+
+  console.log(`\n=== 結果: PASS=${pass} FAIL=${fail} ===`);
+  process.exit(fail === 0 ? 0 : 1);
+})();
+
+/** 既存ユーザーでログインし直してセッション Cookie を作る */
+async function makeSessionExisting(email) {
+  const jar = new Map();
+  const supabase = createServerClient(URL_, PUB, {
+    cookies: {
+      getAll: () => [...jar].map(([cookieName, value]) => ({ name: cookieName, value })),
+      setAll: (list) => {
+        for (const { name: cookieName, value } of list) jar.set(cookieName, value);
+      },
+    },
+  });
+  await supabase.auth.signInWithPassword({ email, password: PASSWORD });
+  return {
+    cookie: [...jar]
+      .map(([cookieName, value]) => `${cookieName}=${encodeURIComponent(value)}`)
+      .join("; "),
+  };
+}
