@@ -139,11 +139,68 @@ const get = (pathname, cookie) =>
   check("自分の行に「自分」が付く", html.includes("自分"), "自分マークなし");
   check("追加フォームのボタンがある", html.includes("スタッフを追加"), "追加ボタンなし");
 
-  console.log("\n=== 未実装ページのプレースホルダ ===");
-  for (const [pathname, label] of [
-    ["/admin/sales", "売上集計"],
-    ["/admin/business-days", "営業日"],
+  console.log("\n=== 売上集計 ===");
+  // ダミーデータの期間（scripts/dummy-sales-seed.sh と同じ）
+  const FROM = "2026-06-04";
+  const TO = "2026-06-27";
+  const query = `from=${FROM}&to=${TO}`;
+
+  res = await get(`/admin/sales?${query}`, cookieAdmin);
+  html = strip(await res.text());
+  check("売上集計が 200 で開く", res.status === 200, `${res.status}`);
+  check("サマリの見出しが出る", html.includes("客単価") && html.includes("営業日数"), "サマリなし");
+  check("日別売上のセクションが出る", html.includes("日別売上"), "日別なし");
+  check("時間帯別のセクションが出る", html.includes("時間帯別売上"), "時間帯なし");
+  check("24時以降の注記が出る", html.includes("24 時台"), "注記なし");
+  check("商品別ランキングが出る", html.includes("商品別ランキング"), "商品別なし");
+  check("CSV リンクが3種ある", ["日別 CSV", "商品別 CSV", "明細 CSV"].every((l) => html.includes(l)), "CSV リンク不足");
+
+  const dayLinks = [...html.matchAll(/\/admin\/sales\/([0-9a-f-]{36})/g)].map((m) => m[1]);
+  check("日別テーブルからドリルダウンできるリンクがある", dayLinks.length > 0, "リンクなし");
+
+  if (dayLinks.length > 0) {
+    res = await get(`/admin/sales/${dayLinks[0]}`, cookieAdmin);
+    html = strip(await res.text());
+    check("営業日の明細ドリルダウンが 200 で開く", res.status === 200, `${res.status}`);
+    check("伝票の会計状態が出る", html.includes("会計済み") || html.includes("未会計"), "状態なし");
+  }
+
+  res = await get(`/admin/sales?from=2020-01-01&to=2020-01-02`, cookieAdmin);
+  html = strip(await res.text());
+  check("データが無い期間でも落ちない", res.status === 200 && html.includes("営業日がありません"), `${res.status}`);
+
+  console.log("\n=== CSV エクスポート ===");
+  for (const [type, header] of [
+    ["daily", "営業日,状態,伝票枚数"],
+    ["product", "商品名,カテゴリ,数量,売上"],
+    ["items", "営業日,伝票番号,客名"],
   ]) {
+    res = await get(`/admin/sales/export?type=${type}&${query}`, cookieAdmin);
+    // Response.text() は仕様上 BOM を取り除いてしまうので、バイト列で確認する
+    const bytes = new Uint8Array(await res.clone().arrayBuffer());
+    const csv = await res.text();
+    check(
+      `${type} CSV が UTF-8 BOM 付きで返る`,
+      res.status === 200 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf,
+      `${res.status} / 先頭バイト=${[...bytes.slice(0, 3)].map((b) => b.toString(16)).join(" ")}`,
+    );
+    check(`${type} CSV のヘッダが正しい`, csv.includes(header), csv.slice(0, 120));
+    check(
+      `${type} CSV に Content-Disposition が付く`,
+      (res.headers.get("content-disposition") ?? "").includes("attachment"),
+      res.headers.get("content-disposition"),
+    );
+  }
+
+  res = await get(`/admin/sales/export?type=daily&${query}`, staffUser.cookie);
+  check(
+    "スタッフは CSV を取得できない",
+    res.status === 307 && (res.headers.get("location") ?? "").includes("/floor"),
+    `${res.status} ${res.headers.get("location")}`,
+  );
+
+  console.log("\n=== 未実装ページのプレースホルダ ===");
+  for (const [pathname, label] of [["/admin/business-days", "営業日"]]) {
     res = await get(pathname, cookieAdmin);
     html = strip(await res.text());
     check(`${pathname} が 200 で開く`, res.status === 200 && html.includes(label), `${res.status}`);
