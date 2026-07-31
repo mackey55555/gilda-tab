@@ -64,8 +64,12 @@ function copyCookies(target: NextResponse, source: NextResponse): NextResponse {
   return target;
 }
 
+// 以下は未ログインでも取得できる必要があるため認証ガードから外す。
+//   manifest / icons … ホーム画面追加時にブラウザが Cookie 無しで取りに来る
+//   sw.js            … Service Worker の登録
+//   offline          … 通信できないときに Service Worker が返す案内
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js|offline|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
