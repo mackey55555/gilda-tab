@@ -12,6 +12,7 @@ import {
   type TabSummary,
 } from "@/lib/types";
 
+import { CloseDaySheet } from "./close-day-sheet";
 import { PaidSection } from "./paid-section";
 import { SettleSheet } from "./settle-sheet";
 import { SignOutButton } from "./sign-out-button";
@@ -47,6 +48,9 @@ export function TabList({
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -175,6 +179,28 @@ export function TabList({
     await refetch();
   }
 
+  async function closeBusinessDay() {
+    setClosing(true);
+    setCloseError(null);
+
+    const supabase = getSupabaseBrowserClient();
+    // status と closed_at は CHECK 制約で対になっているため、必ず両方入れる
+    const { data, error: updateError } = await supabase
+      .from("business_days")
+      .update({ status: "closed", closed_at: new Date().toISOString() })
+      .eq("id", businessDayId)
+      .select("id");
+
+    if (updateError || (data?.length ?? 0) === 0) {
+      setClosing(false);
+      setCloseError("営業を終了できませんでした。通信状況を確認して再試行してください。");
+      return;
+    }
+
+    // 営業日が無くなるので、サーバ側で「本日の営業を開始」の画面に切り替わる
+    router.refresh();
+  }
+
   const selectedTabs = tabs.filter((tab) => selected.has(tab.id));
   const selectedTotal = selectedTabs.reduce((sum, tab) => sum + tab.total, 0);
   const openTotal = tabs.reduce((sum, tab) => sum + tab.total, 0);
@@ -238,6 +264,20 @@ export function TabList({
         )}
 
         {!selecting && <PaidSection payments={payments} onVoided={() => void refetch()} />}
+
+        {/* 1 晩に 1 回の操作なので、誤タップしないよう一覧の末尾に置く */}
+        {!selecting && (
+          <button
+            type="button"
+            onClick={() => {
+              setCloseError(null);
+              setCloseOpen(true);
+            }}
+            className="mt-6 min-h-tap self-center rounded-lg border border-line px-4 text-sm text-ink-muted"
+          >
+            本日の営業を終了
+          </button>
+        )}
       </div>
 
       {notice && (
@@ -303,6 +343,18 @@ export function TabList({
           error={settleError}
           onConfirm={() => void settleSelected()}
           onClose={() => setSettleOpen(false)}
+        />
+      )}
+
+      {closeOpen && (
+        <CloseDaySheet
+          businessDate={businessDate}
+          openTabs={tabs}
+          payments={payments}
+          pending={closing}
+          error={closeError}
+          onConfirm={() => void closeBusinessDay()}
+          onClose={() => setCloseOpen(false)}
         />
       )}
     </main>

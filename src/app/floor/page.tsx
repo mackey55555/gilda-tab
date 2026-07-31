@@ -16,7 +16,21 @@ export default async function FloorPage() {
     .maybeSingle();
 
   if (!businessDay) {
-    return <OpenDayPanel staffName={staff.name} />;
+    // 誤ってクローズした場合に同じ晩へ戻れるよう、直近の営業日を管理者にだけ提示する
+    const { data: lastClosed } = await supabase
+      .from("business_days")
+      .select("id, date")
+      .eq("status", "closed")
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return (
+      <OpenDayPanel
+        staffName={staff.name}
+        reopenTarget={staff.role === "admin" ? lastClosed : null}
+      />
+    );
   }
 
   const [{ data: tabRows }, { data: paymentRows }] = await Promise.all([

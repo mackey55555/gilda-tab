@@ -13,9 +13,16 @@ import { SignOutButton } from "./sign-out-button";
  * open な営業日が無いときの画面。
  * 営業開始は PC を開かずスマホから行えないと現場が止まるので、/floor に置いている。
  */
-export function OpenDayPanel({ staffName }: { staffName: string }) {
+type Props = {
+  staffName: string;
+  /** 直近のクローズ済み営業日。管理者のときだけ渡され、誤クローズからの復帰に使う。 */
+  reopenTarget: { id: string; date: string } | null;
+};
+
+export function OpenDayPanel({ staffName, reopenTarget }: Props) {
   const router = useRouter();
   const [opening, setOpening] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 実際に保存される日付は DB の current_business_date() が決める。表示を合わせるため同じ規則で計算する。
@@ -34,6 +41,33 @@ export function OpenDayPanel({ staffName }: { staffName: string }) {
         insertError.code === "23505"
           ? "この日付の営業日はすでに登録されています。画面を再読み込みしてください。"
           : "営業を開始できませんでした。通信状況を確認して再試行してください。",
+      );
+      return;
+    }
+
+    router.refresh();
+  }
+
+  /** 管理者のみ。クローズ済み営業日の更新は RLS でも admin に限定されている。 */
+  async function reopenBusinessDay() {
+    if (!reopenTarget) return;
+
+    setReopening(true);
+    setError(null);
+
+    const supabase = getSupabaseBrowserClient();
+    const { data, error: updateError } = await supabase
+      .from("business_days")
+      .update({ status: "open", closed_at: null })
+      .eq("id", reopenTarget.id)
+      .select("id");
+
+    if (updateError || (data?.length ?? 0) === 0) {
+      setReopening(false);
+      setError(
+        updateError?.code === "23505"
+          ? "他の端末で別の営業日が開かれています。画面を再読み込みしてください。"
+          : "営業を再開できませんでした",
       );
       return;
     }
@@ -67,6 +101,24 @@ export function OpenDayPanel({ staffName }: { staffName: string }) {
           <p role="alert" className="text-sm text-danger">
             {error}
           </p>
+        )}
+
+        {reopenTarget && (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              onClick={() => void reopenBusinessDay()}
+              disabled={reopening || opening}
+              className="min-h-tap rounded-lg border border-line px-4 text-sm text-ink-muted disabled:opacity-50"
+            >
+              {reopening
+                ? "再開中…"
+                : `${formatBusinessDate(reopenTarget.date)} の営業を再開`}
+            </button>
+            <span className="text-xs text-ink-muted">
+              誤って終了したときに戻すためのものです（管理者のみ）
+            </span>
+          </div>
         )}
       </div>
     </main>
