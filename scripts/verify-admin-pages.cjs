@@ -123,6 +123,10 @@ const get = (pathname, cookie) =>
     `${res.status} ${res.headers.get("location")}`,
   );
 
+  console.log("\n=== /floor の管理者向け導線 ===");
+  const floorHtml = strip(await (await get("/floor", cookieAdmin)).text());
+  check("管理者の /floor には管理画面ボタンが出る", floorHtml.includes("管理画面"), "ボタンなし");
+
   console.log("\n=== 商品マスタ ===");
   res = await get("/admin/products", cookieAdmin);
   let html = strip(await res.text());

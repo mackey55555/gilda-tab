@@ -197,6 +197,7 @@ const asUser = (token, method, pathname, body) =>
   // 1 画面化したので詳細ページは無い。カード上の導線と、開いたときに使う明細を確認する。
   check("カードに会計ボタンがある", html.includes(">会計<"), "会計ボタンなし");
   check("営業終了の導線がある", html.includes("本日の営業を終了"), "終了ボタンなし");
+  check("一般スタッフには管理画面ボタンを出さない", !html.includes("管理画面"), "ボタンが出ている");
 
   const detail = await asUser(
     token,

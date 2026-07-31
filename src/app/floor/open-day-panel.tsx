@@ -81,14 +81,7 @@ export function OpenDayPanel({ staffName, isAdmin, reopenTarget }: Props) {
     <main className="flex min-h-dvh flex-col px-5 pt-6 pb-safe">
       <header className="flex items-center justify-between">
         <span className="text-lg font-bold tracking-widest text-accent">gilda</span>
-        <div className="flex items-center gap-1">
-          {isAdmin && (
-            <Link href="/admin/sales" className="min-h-tap rounded-lg px-3 text-sm text-accent">
-              管理
-            </Link>
-          )}
-          <SignOutButton staffName={staffName} />
-        </div>
+        <SignOutButton staffName={staffName} />
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
@@ -130,6 +123,17 @@ export function OpenDayPanel({ staffName, isAdmin, reopenTarget }: Props) {
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="flex justify-start">
+          <Link
+            href="/admin/sales"
+            className="flex min-h-14 items-center rounded-full border border-line bg-surface px-5 text-sm font-bold text-ink-muted"
+          >
+            管理画面
+          </Link>
+        </div>
+      )}
     </main>
   );
 }

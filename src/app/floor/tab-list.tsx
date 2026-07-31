@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { formatBusinessDate, formatYen, guestLabel } from "@/lib/format";
+import { groupOrderItems } from "@/lib/order-groups";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   toPaymentSummary,
@@ -17,7 +18,7 @@ import {
 
 import { CloseDaySheet } from "./close-day-sheet";
 import { PaidSection } from "./paid-section";
-import { SettleSheet } from "./settle-sheet";
+import { SettleSheet, type SettleLine } from "./settle-sheet";
 import { SignOutButton } from "./sign-out-button";
 import { TabCard } from "./tab-card";
 
@@ -58,6 +59,7 @@ export function TabList({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [settleTargets, setSettleTargets] = useState<TabSummary[] | null>(null);
+  const [settleLines, setSettleLines] = useState<SettleLine[]>([]);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
@@ -136,6 +138,43 @@ export function TabList({
     // 画面遷移せず、そのまま開いて注文を入れられるようにする
     setExpandedId(data.id);
     await refetch();
+  }
+
+  /**
+   * 会計シートを開く。単独会計のときは明細を引き直して内訳を出す。
+   * お客様に見せる画面でも同じ内訳を使うため、名前と合計だけでは足りない。
+   */
+  async function openSettle(targets: TabSummary[]) {
+    setSettleError(null);
+
+    if (targets.length !== 1) {
+      setSettleLines(
+        targets.map((tab) => ({
+          key: tab.id,
+          label: guestLabel(tab.guestName, tab.seq),
+          amount: tab.total,
+        })),
+      );
+      setSettleTargets(targets);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { data } = await supabase
+      .from("order_items")
+      .select("id, product_id, name_snapshot, price_snapshot, qty, created_at")
+      .eq("tab_id", targets[0].id)
+      .order("created_at", { ascending: true });
+
+    setSettleLines(
+      groupOrderItems(data ?? []).map((group) => ({
+        key: group.key,
+        label: group.name,
+        amount: group.price * group.qty,
+        detail: `${formatYen(group.price)} × ${group.qty}`,
+      })),
+    );
+    setSettleTargets(targets);
   }
 
   async function settle(targets: TabSummary[]) {
@@ -217,14 +256,7 @@ export function TabList({
               {formatBusinessDate(businessDate)} 営業中
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            {isAdmin && (
-              <Link href="/admin/sales" className="min-h-tap rounded-lg px-3 text-sm text-accent">
-                管理
-              </Link>
-            )}
-            <SignOutButton staffName={staffName} />
-          </div>
+          <SignOutButton staffName={staffName} />
         </div>
 
         <div className="mt-2 flex items-center justify-between">
@@ -273,10 +305,7 @@ export function TabList({
                 selected={selected.has(tab.id)}
                 onToggleExpand={(id) => setExpandedId((prev) => (prev === id ? null : id))}
                 onToggleSelect={toggleSelected}
-                onSettle={(target) => {
-                  setSettleError(null);
-                  setSettleTargets([target]);
-                }}
+                onSettle={(target) => void openSettle([target])}
                 onDeleted={() => void refetch()}
                 onChanged={() => void refetch()}
               />
@@ -320,10 +349,7 @@ export function TabList({
           </div>
           <button
             type="button"
-            onClick={() => {
-              setSettleError(null);
-              setSettleTargets(selectedTabs);
-            }}
+            onClick={() => void openSettle(selectedTabs)}
             disabled={selectedTabs.length === 0}
             className="mt-2 min-h-14 w-full rounded-xl bg-accent text-lg font-bold text-accent-ink disabled:opacity-40"
           >
@@ -331,7 +357,17 @@ export function TabList({
           </button>
         </div>
       ) : (
-        <div className="pointer-events-none sticky bottom-0 flex justify-end px-5 pb-safe">
+        <div className="pointer-events-none sticky bottom-0 flex items-center justify-between px-5 pb-safe">
+          {isAdmin ? (
+            <Link
+              href="/admin/sales"
+              className="pointer-events-auto flex min-h-14 items-center rounded-full border border-line bg-surface px-5 text-sm font-bold text-ink-muted shadow-lg shadow-black/40"
+            >
+              管理画面
+            </Link>
+          ) : (
+            <span />
+          )}
           <button
             type="button"
             onClick={createTab}
@@ -350,12 +386,8 @@ export function TabList({
               ? `${guestLabel(settleTargets[0].guestName, settleTargets[0].seq)} の会計`
               : `まとめて会計（${settleTargets.length}枚）`
           }
-          lines={settleTargets.map((tab) => ({
-            key: tab.id,
-            label: guestLabel(tab.guestName, tab.seq),
-            amount: tab.total,
-          }))}
-          total={settleTargets.reduce((sum, tab) => sum + tab.total, 0)}
+          lines={settleLines}
+          total={settleLines.reduce((sum, line) => sum + line.amount, 0)}
           pending={settling}
           error={settleError}
           onConfirm={() => void settle(settleTargets)}
