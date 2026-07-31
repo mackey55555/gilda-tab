@@ -42,6 +42,14 @@ check() { # check <label> <condition-result 0/1> <detail>
   else FAIL=$((FAIL+1)); printf '  NG   %s\n       -> %s\n' "$1" "$3"; fi
 }
 
+# open な営業日があると date のユニーク制約に当たって以降が総崩れになるため、先に止める
+admin_rest GET "/business_days?status=eq.open&select=id,date"
+if [ "$(printf '%s' "$BODY" | jq 'length')" != "0" ]; then
+  echo "open な営業日があります: $(printf '%s' "$BODY" | jq -c '[.[].date]')"
+  echo "運用中のデータを壊さないため中断します。営業日をクローズしてから再実行してください。"
+  exit 1
+fi
+
 echo "=== セットアップ: テストユーザー作成 ==="
 mkuser() {
   curl -s -X POST "$URL/auth/v1/admin/users" -H "apikey: $SECRET" -H "Authorization: Bearer $SECRET" \
@@ -78,7 +86,9 @@ check "未ログイン（anon）は products を読めない" "$([ "$(printf '%s
 
 rest GET "/products?select=id,name,price,sort_order&order=sort_order" "$STOK"
 NP=$(printf '%s' "$BODY" | jq 'length')
-check "スタッフは seed 商品 16件を表示順で読める (取得=$NP)" "$([ "$NP" = "16" ] && echo 0 || echo 1)" "$CODE $BODY"
+SORTED=$(printf '%s' "$BODY" | jq '[.[].sort_order] == ([.[].sort_order] | sort)')
+check "スタッフは商品を表示順で読める (取得=${NP}件)" \
+  "$([ "$NP" -gt 0 ] && [ "$SORTED" = "true" ] && echo 0 || echo 1)" "$CODE $BODY"
 PROD_ID=$(printf '%s' "$BODY" | jq -r '.[0].id')
 
 echo
@@ -113,8 +123,8 @@ echo "=== 営業日 ==="
 rest POST "/business_days" "$STOK" '{}'
 BD_ID=$(printf '%s' "$BODY" | jq -r '.[0].id')
 BD_DATE=$(printf '%s' "$BODY" | jq -r '.[0].date')
-check "スタッフが営業日を open できる (date=$BD_DATE JST・status=$(printf '%s' "$BODY" | jq -r '.[0].status'))" \
-  "$([ "$CODE" = "201" ] && [ "$BD_DATE" = "$(TZ=Asia/Tokyo date +%F)" ] && echo 0 || echo 1)" "$CODE $BODY"
+check "スタッフが営業日を open できる (date=${BD_DATE} 朝6時カットオフ・status=$(printf '%s' "$BODY" | jq -r '.[0].status'))" \
+  "$([ "$CODE" = "201" ] && [ "$BD_DATE" = "$(TZ=Asia/Tokyo date -v-6H +%F)" ] && echo 0 || echo 1)" "$CODE $BODY"
 
 rest POST "/business_days" "$STOK" '{}'
 check "open 中に 2件目の営業日は作れない（同時open 1件・date ユニーク）" "$([ "$CODE" = "409" ] && echo 0 || echo 1)" "$CODE $BODY"
@@ -220,7 +230,7 @@ echo "  残 order_items: $(printf '%s' "$BODY" | jq 'length') 件"
 admin_rest GET "/payments?select=id"
 echo "  残 payments: $(printf '%s' "$BODY" | jq 'length') 件"
 admin_rest GET "/products?select=id"
-echo "  残 products: $(printf '%s' "$BODY" | jq 'length') 件（seed の 16件が残るのが正しい）"
+echo "  残 products: $(printf '%s' "$BODY" | jq 'length') 件（検証前と同数なら正しい）"
 
 echo
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="

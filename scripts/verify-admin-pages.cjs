@@ -107,7 +107,8 @@ const get = (pathname, cookie) =>
     `${res.status} ${res.headers.get("location")}`,
   );
 
-  res = await get("/admin", "");
+  // /admin は next.config の redirects が先に動くため、実ページで認証ガードを確認する
+  res = await get("/admin/products", "");
   check(
     "未ログインは /login にリダイレクトされる",
     res.status === 307 && (res.headers.get("location") ?? "").includes("/login"),
@@ -117,7 +118,8 @@ const get = (pathname, cookie) =>
   res = await get("/admin", cookieAdmin);
   check(
     "/admin は /admin/products にリダイレクトされる",
-    res.status === 307 && (res.headers.get("location") ?? "").includes("/admin/products"),
+    (res.status === 307 || res.status === 308) &&
+      (res.headers.get("location") ?? "").includes("/admin/products"),
     `${res.status} ${res.headers.get("location")}`,
   );
 
@@ -126,8 +128,19 @@ const get = (pathname, cookie) =>
   let html = strip(await res.text());
   check("admin は商品マスタを開ける", res.status === 200, `${res.status}`);
   check("サイドバーの項目が出る", html.includes("商品マスタ") && html.includes("スタッフ"), "サイドバーなし");
-  check("seed 商品が一覧に出る", html.includes("生ビール"), "生ビールなし");
-  check("価格が表示される", html.includes("¥800"), "価格なし");
+  const firstProduct = (
+    await admin("GET", "/products?select=name,price&is_active=eq.true&order=sort_order&limit=1")
+  ).body?.[0];
+  check(
+    `登録済み商品が一覧に出る（${firstProduct?.name}）`,
+    firstProduct ? html.includes(firstProduct.name) : false,
+    "商品なし",
+  );
+  check(
+    "価格が表示される",
+    firstProduct ? html.includes(`¥${firstProduct.price.toLocaleString("en-US")}`) : false,
+    "価格なし",
+  );
   check("追加ボタンがある", html.includes("商品を追加"), "追加ボタンなし");
   check("削除の可否が出し分けられる", html.includes("注文実績あり") || html.includes("削除"), "操作列なし");
 
@@ -140,10 +153,24 @@ const get = (pathname, cookie) =>
   check("追加フォームのボタンがある", html.includes("スタッフを追加"), "追加ボタンなし");
 
   console.log("\n=== 売上集計 ===");
-  // ダミーデータの期間（scripts/dummy-sales-seed.sh と同じ）
-  const FROM = "2026-06-04";
-  const TO = "2026-06-27";
+  // 集計の確認用に、他と重ならない日付の営業日を自前で作る
+  const FROM = "2026-04-16";
+  const TO = "2026-04-16";
   const query = `from=${FROM}&to=${TO}`;
+
+  const day = await admin("POST", "/business_days", {
+    date: FROM,
+    opened_at: `${FROM}T11:00:00Z`,
+    status: "closed",
+    closed_at: `${FROM}T16:00:00Z`,
+  });
+  const salesDayId = day.body?.[0]?.id;
+  const salesTab = await admin("POST", "/tabs", { business_day_id: salesDayId, guest_name: "集計確認" });
+  const salesTabId = salesTab.body?.[0]?.id;
+  await admin("POST", "/order_items", [
+    { tab_id: salesTabId, name_snapshot: "確認用ビール", price_snapshot: 800, qty: 2, created_at: `${FROM}T12:00:00Z` },
+    { tab_id: salesTabId, name_snapshot: "確認用その他", price_snapshot: 1500, qty: 1, created_at: `${FROM}T15:30:00Z` },
+  ]);
 
   res = await get(`/admin/sales?${query}`, cookieAdmin);
   html = strip(await res.text());
@@ -154,6 +181,7 @@ const get = (pathname, cookie) =>
   check("24時以降の注記が出る", html.includes("24 時台"), "注記なし");
   check("商品別ランキングが出る", html.includes("商品別ランキング"), "商品別なし");
   check("CSV リンクが3種ある", ["日別 CSV", "商品別 CSV", "明細 CSV"].every((l) => html.includes(l)), "CSV リンク不足");
+  check("集計金額が出る（800x2 + 1500 = ¥3,100）", html.includes("¥3,100"), "金額なし");
 
   const dayLinks = [...html.matchAll(/\/admin\/sales\/([0-9a-f-]{36})/g)].map((m) => m[1]);
   check("日別テーブルからドリルダウンできるリンクがある", dayLinks.length > 0, "リンクなし");
@@ -207,6 +235,10 @@ const get = (pathname, cookie) =>
   }
 
   console.log("\n=== 後片付け ===");
+  if (salesTabId) await admin("DELETE", `/order_items?tab_id=eq.${salesTabId}`);
+  if (salesTabId) await admin("DELETE", `/tabs?id=eq.${salesTabId}`);
+  if (salesDayId) await admin("DELETE", `/business_days?id=eq.${salesDayId}`);
+
   for (const email of ["admin-page-test@example.com", "staff-page-test@example.com"]) {
     const list = await fetch(`${URL_}/auth/v1/admin/users?page=1&per_page=200`, {
       headers: { apikey: SECRET, Authorization: `Bearer ${SECRET}` },

@@ -108,8 +108,8 @@ const asUser = (token, method, pathname, body) =>
   /** React SSR がテキストノード境界に挟む <!-- --> を除去してから判定する */
   const strip = (html) => html.replaceAll("<!-- -->", "");
 
-  const get = (pathname) =>
-    fetch(`${BASE}${pathname}`, { headers: { Cookie: cookieHeader }, redirect: "manual" });
+  const get = (pathname, cookie = cookieHeader) =>
+    fetch(`${BASE}${pathname}`, { headers: { Cookie: cookie }, redirect: "manual" });
 
   // 既に open な営業日があれば再利用する。実運用中のデータを壊さないため、
   // このスクリプトが作ったものだけを後片付けの対象にする。
@@ -155,8 +155,12 @@ const asUser = (token, method, pathname, body) =>
     `${seq1} / ${seq2}`,
   );
 
-  const products = await asUser(token, "GET", "/products?select=id,name,price&order=sort_order&limit=1");
+  const products = await asUser(token, "GET", "/products?select=id,name,price&is_active=eq.true&order=sort_order&limit=1");
   const beer = products.body?.[0];
+  // 商品マスタは運用で変わるため、期待値はハードコードせず実際の単価から求める
+  const FREE_AMOUNT = 1500;
+  const expectedTotal = beer.price * 2 + FREE_AMOUNT;
+  const expectedYen = `¥${expectedTotal.toLocaleString("en-US")}`;
   await asUser(token, "POST", "/order_items", {
     tab_id: tab1Id,
     product_id: beer.id,
@@ -174,7 +178,7 @@ const asUser = (token, method, pathname, body) =>
   await asUser(token, "POST", "/order_items", {
     tab_id: tab1Id,
     name_snapshot: "その他",
-    price_snapshot: 1500,
+    price_snapshot: FREE_AMOUNT,
     staff_id: userId,
   });
 
@@ -184,8 +188,8 @@ const asUser = (token, method, pathname, body) =>
   check(`仮名「客${seq1}」がカードに出る`, html.includes(`客${seq1}`), `客${seq1} なし`);
   check("入力済みの客名「田中さん」がカードに出る", html.includes("田中さん"), "田中さん なし");
   check(
-    "tab_summaries の合計が反映される (800*2+1500 = ¥3,100)",
-    html.includes("¥3,100"),
+    `tab_summaries の合計が反映される (${beer.price}x2 + ${FREE_AMOUNT} = ${expectedYen})`,
+    html.includes(expectedYen),
     "合計表示なし",
   );
   check("FAB「＋お客さん」がある", html.includes("＋お客さん"), "FAB なし");
@@ -202,7 +206,7 @@ const asUser = (token, method, pathname, body) =>
     "グルーピング表示なし",
   );
   check("フリー金額明細「その他」が明細に出る", html.includes("その他"), "その他 なし");
-  check("合計が ¥3,100 で出る", html.includes("¥3,100"), "合計なし");
+  check(`合計が ${expectedYen} で出る`, html.includes(expectedYen), "合計なし");
   check("会計ボタンが（無効で）ある", html.includes("会計する"), "会計ボタンなし");
 
   console.log("\n=== 会計（settle_tabs）後の描画 ===");
@@ -224,15 +228,22 @@ const asUser = (token, method, pathname, body) =>
     "伝票カードのリンクが残っている",
   );
   check("会計済みセクションが出る", html.includes("会計済み"), "会計済みセクションなし");
-  check("会計済みの金額が出る (¥3,100)", html.includes("¥3,100"), "金額なし");
+  check(`会計済みの金額が出る (${expectedYen})`, html.includes(expectedYen), "金額なし");
 
   res = await get(`/floor/${tab1Id}`);
   html = strip(await res.text());
   check("会計済み伝票を開くと編集不可の表示になる", html.includes("会計済みの伝票です"), "表示なし");
 
   console.log("\n=== 存在しない伝票 ===");
-  res = await get("/floor/00000000-0000-0000-0000-000000000000");
-  check("存在しない伝票は 404", res.status === 404, `${res.status}`);
+  // loading.tsx の Suspense 境界があると notFound() のステータスが 200 になるため、
+  // 汎用 404 ではなく戻り導線のある画面を出している。文言で判定する。
+  res = await get("/floor/00000000-0000-0000-0000-000000000000", cookieHeader);
+  html = strip(await res.text());
+  check(
+    "存在しない伝票は案内画面になる",
+    html.includes("伝票が見つかりません") && html.includes("伝票一覧へ戻る"),
+    `${res.status}`,
+  );
 
   console.log("\n=== 後片付け ===");
   // 後片付けは「このスクリプトが作った行」だけを対象にする。
