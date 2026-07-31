@@ -1,10 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { formatYen } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { Category } from "@/lib/types";
+
+import { SortableRows, useSortableRow } from "../sortable-rows";
 
 import { ProductForm, type ProductDraft } from "./product-form";
 
@@ -12,7 +16,7 @@ export type AdminProduct = {
   id: string;
   name: string;
   price: number;
-  category: string | null;
+  category_id: string | null;
   sort_order: number;
   is_active: boolean;
   /** 一度でも注文されたか。使用済みは削除させず無効化に倒す。 */
@@ -21,25 +25,45 @@ export type AdminProduct = {
 
 type Filter = "active" | "all";
 
-export function ProductTable({ initialProducts }: { initialProducts: AdminProduct[] }) {
+export function ProductTable({
+  initialProducts,
+  categories,
+}: {
+  initialProducts: AdminProduct[];
+  categories: Category[];
+}) {
   const router = useRouter();
+  const [products, setProducts] = useState(initialProducts);
   const [filter, setFilter] = useState<Filter>("active");
+  const [keyword, setKeyword] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, startRefresh] = useTransition();
 
-  const categories = useMemo(
-    () =>
-      [...new Set(initialProducts.map((product) => product.category).filter(Boolean))] as string[],
-    [initialProducts],
+  const categoryName = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
   );
 
-  const visible =
-    filter === "active" ? initialProducts.filter((product) => product.is_active) : initialProducts;
+  const visible = useMemo(() => {
+    const trimmed = keyword.trim();
+    return products.filter((product) => {
+      const byFilter = filter === "all" || product.is_active;
+      const byKeyword =
+        trimmed === "" ||
+        product.name.includes(trimmed) ||
+        (product.category_id ? (categoryName.get(product.category_id) ?? "") : "未分類").includes(
+          trimmed,
+        );
+      return byFilter && byKeyword;
+    });
+  }, [products, filter, keyword, categoryName]);
 
-  /** 書き込み後はサーバから引き直す。並べ替えは全体の sort_order が変わるため。 */
+  // 並べ替えは全件を対象にする。絞り込み中に動かすと意図しない順序になるため止める。
+  const sortable = filter === "active" && keyword.trim() === "" && !creating && editingId === null;
+
   function refresh() {
     startRefresh(() => router.refresh());
   }
@@ -49,13 +73,10 @@ export function ProductTable({ initialProducts }: { initialProducts: AdminProduc
     setError(null);
 
     const { error: actionError } = await action();
-
     setBusyId(null);
 
     if (actionError) {
-      setError(
-        actionError instanceof Error ? actionError.message : "操作に失敗しました",
-      );
+      setError(actionError instanceof Error ? actionError.message : "操作に失敗しました");
       return false;
     }
 
@@ -65,11 +86,7 @@ export function ProductTable({ initialProducts }: { initialProducts: AdminProduc
 
   async function create(draft: ProductDraft) {
     const supabase = getSupabaseBrowserClient();
-    const maxOrder = initialProducts.reduce(
-      (max, product) => Math.max(max, product.sort_order),
-      0,
-    );
-
+    const maxOrder = products.reduce((max, product) => Math.max(max, product.sort_order), 0);
     const ok = await run(null, async () =>
       supabase.from("products").insert({ ...draft, sort_order: maxOrder + 10 }),
     );
@@ -89,19 +106,30 @@ export function ProductTable({ initialProducts }: { initialProducts: AdminProduc
     );
   }
 
-  async function move(product: AdminProduct, direction: "up" | "down") {
+  async function reorder(ids: string[]) {
+    // 先に画面へ反映してからサーバに送る（ドラッグの手応えを損なわないため）
+    const byId = new Map(products.map((product) => [product.id, product]));
+    setProducts(ids.map((id) => byId.get(id)).filter((p): p is AdminProduct => p !== undefined));
+    setError(null);
+
     const supabase = getSupabaseBrowserClient();
-    await run(product.id, async () =>
-      supabase.rpc("move_product", { target_product_id: product.id, direction }),
-    );
+    const { error: rpcError } = await supabase.rpc("reorder_products", { product_ids: ids });
+
+    if (rpcError) {
+      setProducts(initialProducts);
+      setError("並べ替えを保存できませんでした");
+      return;
+    }
+
+    refresh();
   }
 
   async function remove(product: AdminProduct) {
-    const supabase = getSupabaseBrowserClient();
-    // RLS で弾かれた場合はエラーではなく 0 件になるので、消えた件数で判定する
     setBusyId(product.id);
     setError(null);
 
+    const supabase = getSupabaseBrowserClient();
+    // RLS で弾かれた場合はエラーではなく 0 件になるので、消えた件数で判定する
     const { data, error: deleteError } = await supabase
       .from("products")
       .delete()
@@ -122,16 +150,35 @@ export function ProductTable({ initialProducts }: { initialProducts: AdminProduc
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">商品マスタ</h1>
+        <Link
+          href="/admin/categories"
+          className="rounded-lg border border-line px-3 py-1 text-sm text-ink-muted"
+        >
+          カテゴリを編集
+        </Link>
+      </div>
+
+      <p className="text-sm text-ink-muted">
+        表示順は営業画面の商品グリッドの並びです。行の左端を掴んで入れ替えられます。
+        注文実績のある商品は削除できません（無効化すると営業画面から消えます）。
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={keyword}
+          onChange={(event) => setKeyword(event.target.value)}
+          placeholder="商品名・カテゴリで検索"
+          className="h-9 w-64 rounded-lg border border-line bg-raised px-3 outline-none focus:border-accent"
+        />
         <div className="flex items-center gap-2">
           <FilterTab label="有効のみ" active={filter === "active"} onClick={() => setFilter("active")} />
           <FilterTab label="すべて" active={filter === "all"} onClick={() => setFilter("all")} />
         </div>
+        <span className="text-xs text-ink-muted">
+          {visible.length} / {products.length} 件
+          {!sortable && "・絞り込み中は並べ替えできません"}
+        </span>
       </div>
-
-      <p className="text-sm text-ink-muted">
-        表示順は営業画面の商品グリッドの並びです。よく出る商品を上に置いてください。
-        注文実績のある商品は削除できません（無効化すると営業画面から消えます）。
-      </p>
 
       {creating ? (
         <div className="rounded-xl border border-line bg-surface p-4">
@@ -159,116 +206,128 @@ export function ProductTable({ initialProducts }: { initialProducts: AdminProduc
         </p>
       )}
 
-      <table className="w-full border-separate border-spacing-y-1 text-sm">
-        <thead>
-          <tr className="text-left text-xs text-ink-muted">
-            <th className="w-24 px-3 py-1 font-normal">表示順</th>
-            <th className="px-3 py-1 font-normal">商品名</th>
-            <th className="w-40 px-3 py-1 font-normal">カテゴリ</th>
-            <th className="w-28 px-3 py-1 text-right font-normal">価格</th>
-            <th className="w-20 px-3 py-1 font-normal">状態</th>
-            <th className="w-60 px-3 py-1 font-normal">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-3 py-6 text-center text-ink-muted">
-                商品がありません
-              </td>
-            </tr>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-3 px-3 text-xs text-ink-muted">
+          <span className="w-6" />
+          <span className="flex-1">商品名</span>
+          <span className="w-40">カテゴリ</span>
+          <span className="w-28 text-right">価格</span>
+          <span className="w-16">状態</span>
+          <span className="w-56">操作</span>
+        </div>
+
+        {visible.length === 0 && (
+          <p className="px-3 py-6 text-center text-sm text-ink-muted">該当する商品がありません</p>
+        )}
+
+        <SortableRows items={visible} onReorder={reorder} disabled={!sortable}>
+          {(product) => (
+            <ProductRow
+              key={product.id}
+              product={product}
+              categoryName={
+                product.category_id ? (categoryName.get(product.category_id) ?? "—") : "未分類"
+              }
+              categories={categories}
+              sortable={sortable}
+              busy={busyId === product.id || refreshing}
+              editing={editingId === product.id}
+              onEdit={() => setEditingId(product.id)}
+              onCancelEdit={() => setEditingId(null)}
+              onSubmitEdit={(draft) => void update(product.id, draft)}
+              onToggleActive={() => void toggleActive(product)}
+              onRemove={() => void remove(product)}
+            />
           )}
-
-          {visible.map((product, index) => {
-            const busy = busyId === product.id || refreshing;
-
-            if (editingId === product.id) {
-              return (
-                <tr key={product.id}>
-                  <td colSpan={6} className="rounded-xl bg-surface px-3 py-3">
-                    <ProductForm
-                      initial={{
-                        name: product.name,
-                        price: product.price,
-                        category: product.category,
-                      }}
-                      categories={categories}
-                      submitLabel="保存する"
-                      pending={busy}
-                      onSubmit={(draft) => void update(product.id, draft)}
-                      onCancel={() => setEditingId(null)}
-                    />
-                  </td>
-                </tr>
-              );
-            }
-
-            return (
-              <tr key={product.id} className={product.is_active ? "" : "opacity-50"}>
-                <td className="rounded-l-lg bg-surface px-3 py-2">
-                  <div className="flex items-center gap-1">
-                    <MoveButton
-                      label="上へ"
-                      glyph="↑"
-                      disabled={busy || index === 0}
-                      onClick={() => void move(product, "up")}
-                    />
-                    <MoveButton
-                      label="下へ"
-                      glyph="↓"
-                      disabled={busy || index === visible.length - 1}
-                      onClick={() => void move(product, "down")}
-                    />
-                  </div>
-                </td>
-                <td className="bg-surface px-3 py-2 font-bold">{product.name}</td>
-                <td className="bg-surface px-3 py-2 text-ink-muted">{product.category ?? "—"}</td>
-                <td className="bg-surface px-3 py-2 text-right tabular-nums">
-                  {formatYen(product.price)}
-                </td>
-                <td className="bg-surface px-3 py-2">
-                  <span className={product.is_active ? "text-ink" : "text-ink-muted"}>
-                    {product.is_active ? "有効" : "無効"}
-                  </span>
-                </td>
-                <td className="rounded-r-lg bg-surface px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <RowButton label="編集" disabled={busy} onClick={() => setEditingId(product.id)} />
-                    <RowButton
-                      label={product.is_active ? "無効化" : "有効化"}
-                      disabled={busy}
-                      onClick={() => void toggleActive(product)}
-                    />
-                    {product.used ? (
-                      <span className="text-xs text-ink-muted">注文実績あり</span>
-                    ) : (
-                      <RowButton
-                        label="削除"
-                        danger
-                        disabled={busy}
-                        onClick={() => void remove(product)}
-                      />
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+        </SortableRows>
+      </div>
     </div>
   );
 }
 
-function FilterTab({
-  label,
-  active,
-  onClick,
+function ProductRow({
+  product,
+  categoryName,
+  categories,
+  sortable,
+  busy,
+  editing,
+  onEdit,
+  onCancelEdit,
+  onSubmitEdit,
+  onToggleActive,
+  onRemove,
 }: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  product: AdminProduct;
+  categoryName: string;
+  categories: Category[];
+  sortable: boolean;
+  busy: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onSubmitEdit: (draft: ProductDraft) => void;
+  onToggleActive: () => void;
+  onRemove: () => void;
 }) {
+  const { setNodeRef, style, handleProps } = useSortableRow(product.id);
+
+  if (editing) {
+    return (
+      <div className="rounded-xl bg-surface px-3 py-3">
+        <ProductForm
+          initial={{ name: product.name, price: product.price, category_id: product.category_id }}
+          categories={categories}
+          submitLabel="保存する"
+          pending={busy}
+          onSubmit={onSubmitEdit}
+          onCancel={onCancelEdit}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-lg bg-surface px-3 py-2 text-sm ${
+        product.is_active ? "" : "opacity-50"
+      }`}
+    >
+      <span
+        {...(sortable ? handleProps : {})}
+        aria-label="ドラッグして並べ替え"
+        className={`w-6 select-none text-center text-ink-muted ${
+          sortable ? "cursor-grab active:cursor-grabbing" : "opacity-30"
+        }`}
+      >
+        ⠿
+      </span>
+      <span className="min-w-0 flex-1 truncate font-bold">{product.name}</span>
+      <span className="w-40 truncate text-ink-muted">{categoryName}</span>
+      <span className="w-28 text-right tabular-nums">{formatYen(product.price)}</span>
+      <span className={`w-16 ${product.is_active ? "" : "text-ink-muted"}`}>
+        {product.is_active ? "有効" : "無効"}
+      </span>
+      <span className="flex w-56 items-center gap-2">
+        <RowButton label="編集" disabled={busy} onClick={onEdit} />
+        <RowButton
+          label={product.is_active ? "無効化" : "有効化"}
+          disabled={busy}
+          onClick={onToggleActive}
+        />
+        {product.used ? (
+          <span className="text-xs text-ink-muted">注文実績あり</span>
+        ) : (
+          <RowButton label="削除" danger disabled={busy} onClick={onRemove} />
+        )}
+      </span>
+    </div>
+  );
+}
+
+function FilterTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -279,31 +338,6 @@ function FilterTab({
       }`}
     >
       {label}
-    </button>
-  );
-}
-
-function MoveButton({
-  label,
-  glyph,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  glyph: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="size-7 rounded border border-line text-xs disabled:opacity-30"
-    >
-      {glyph}
     </button>
   );
 }

@@ -2,16 +2,18 @@
 
 import { useState } from "react";
 
+import type { Category } from "@/lib/types";
+
 export type ProductDraft = {
   name: string;
   price: number;
-  category: string | null;
+  category_id: string | null;
 };
 
 type Props = {
   /** 編集時の初期値。未指定なら新規作成。 */
   initial?: ProductDraft;
-  categories: string[];
+  categories: Category[];
   submitLabel: string;
   pending: boolean;
   onSubmit: (draft: ProductDraft) => void;
@@ -27,8 +29,8 @@ export function ProductForm({
   onCancel,
 }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [price, setPrice] = useState(String(initial?.price ?? ""));
-  const [category, setCategory] = useState(initial?.category ?? "");
+  const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  const [categoryId, setCategoryId] = useState(initial?.category_id ?? "");
   const [error, setError] = useState<string | null>(null);
 
   function submit() {
@@ -48,7 +50,7 @@ export function ProductForm({
     onSubmit({
       name: trimmedName,
       price: parsedPrice,
-      category: category.trim() === "" ? null : category.trim(),
+      category_id: categoryId === "" ? null : categoryId,
     });
   }
 
@@ -75,17 +77,18 @@ export function ProductForm({
 
       <label className="flex flex-col gap-1">
         <span className="text-xs text-ink-muted">カテゴリ</span>
-        <input
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          list="product-categories"
+        <select
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
           className="h-9 w-40 rounded-lg border border-line bg-raised px-2 outline-none focus:border-accent"
-        />
-        <datalist id="product-categories">
-          {categories.map((item) => (
-            <option key={item} value={item} />
+        >
+          <option value="">未分類</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
           ))}
-        </datalist>
+        </select>
       </label>
 
       <button
@@ -97,11 +100,7 @@ export function ProductForm({
         {pending ? "保存中…" : submitLabel}
       </button>
 
-      <button
-        type="button"
-        onClick={onCancel}
-        className="h-9 rounded-lg px-3 text-sm text-ink-muted"
-      >
+      <button type="button" onClick={onCancel} className="h-9 rounded-lg px-3 text-sm text-ink-muted">
         キャンセル
       </button>
 

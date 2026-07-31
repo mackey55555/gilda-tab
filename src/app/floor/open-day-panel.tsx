@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -15,11 +16,12 @@ import { SignOutButton } from "./sign-out-button";
  */
 type Props = {
   staffName: string;
+  isAdmin: boolean;
   /** 直近のクローズ済み営業日。管理者のときだけ渡され、誤クローズからの復帰に使う。 */
   reopenTarget: { id: string; date: string } | null;
 };
 
-export function OpenDayPanel({ staffName, reopenTarget }: Props) {
+export function OpenDayPanel({ staffName, isAdmin, reopenTarget }: Props) {
   const router = useRouter();
   const [opening, setOpening] = useState(false);
   const [reopening, setReopening] = useState(false);
@@ -79,7 +81,14 @@ export function OpenDayPanel({ staffName, reopenTarget }: Props) {
     <main className="flex min-h-dvh flex-col px-5 pt-6 pb-safe">
       <header className="flex items-center justify-between">
         <span className="text-lg font-bold tracking-widest text-accent">gilda</span>
-        <SignOutButton staffName={staffName} />
+        <div className="flex items-center gap-1">
+          {isAdmin && (
+            <Link href="/admin/sales" className="min-h-tap rounded-lg px-3 text-sm text-accent">
+              管理
+            </Link>
+          )}
+          <SignOutButton staffName={staffName} />
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">

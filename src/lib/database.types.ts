@@ -63,6 +63,30 @@ export type Database = {
         }
         Relationships: []
       }
+      categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -169,7 +193,7 @@ export type Database = {
       }
       products: {
         Row: {
-          category: string | null
+          category_id: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -179,7 +203,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          category?: string | null
+          category_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -189,7 +213,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          category?: string | null
+          category_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -198,12 +222,21 @@ export type Database = {
           sort_order?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staff: {
         Row: {
           created_at: string
           id: string
+          is_active: boolean
           name: string
           role: string
           updated_at: string
@@ -211,6 +244,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id: string
+          is_active?: boolean
           name: string
           role?: string
           updated_at?: string
@@ -218,6 +252,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_active?: boolean
           name?: string
           role?: string
           updated_at?: string
@@ -344,11 +379,12 @@ export type Database = {
       }
       current_business_date: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
-      move_product: {
-        Args: { direction: string; target_product_id: string }
+      product_is_used: { Args: { target_product_id: string }; Returns: boolean }
+      reorder_categories: {
+        Args: { category_ids: string[] }
         Returns: undefined
       }
-      product_is_used: { Args: { target_product_id: string }; Returns: boolean }
+      reorder_products: { Args: { product_ids: string[] }; Returns: undefined }
       sales_by_day: {
         Args: { from_date: string; to_date: string }
         Returns: {
@@ -397,6 +433,10 @@ export type Database = {
           tab_status: string
         }[]
       }
+      set_staff_active: {
+        Args: { active: boolean; target_staff_id: string }
+        Returns: undefined
+      }
       set_staff_role: {
         Args: { new_role: string; target_staff_id: string }
         Returns: undefined
@@ -411,6 +451,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          is_active: boolean
           name: string
           role: string
         }[]

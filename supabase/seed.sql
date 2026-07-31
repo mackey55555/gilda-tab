@@ -2,8 +2,16 @@
 -- リモートへ投入するときは `supabase db push --include-seed`。
 -- products が空のときだけ挿入するので、再実行しても重複しない。
 
-insert into public.products (name, price, category, sort_order)
+insert into public.categories (name, sort_order)
 select *
+  from (values
+    ('ビール', 10), ('ハイボール', 20), ('カクテル', 30),
+    ('ウイスキー', 40), ('ワイン', 50), ('ソフトドリンク', 60), ('フード', 70)
+  ) as v(name, sort_order)
+ where not exists (select 1 from public.categories);
+
+insert into public.products (name, price, category_id, sort_order)
+select v.name, v.price, c.id, v.sort_order
   from (values
     -- sort_order はカテゴリを跨いだグローバル順。よく出る商品を上位に置く。
     ('生ビール',              800, 'ビール',         10),
@@ -22,5 +30,6 @@ select *
     ('ジンジャーエール',      500, 'ソフトドリンク', 140),
     ('ミックスナッツ',        600, 'フード',        150),
     ('チーズ盛り合わせ',     1200, 'フード',        160)
-  ) as v(name, price, category, sort_order)
+  ) as v(name, price, category_name, sort_order)
+  left join public.categories c on c.name = v.category_name
  where not exists (select 1 from public.products);

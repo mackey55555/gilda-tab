@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -8,7 +9,9 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   toPaymentSummary,
   toTabSummary,
+  type Category,
   type PaymentSummary,
+  type Product,
   type TabSummary,
 } from "@/lib/types";
 
@@ -25,6 +28,10 @@ type Props = {
   businessDayId: string;
   businessDate: string;
   staffName: string;
+  staffId: string;
+  isAdmin: boolean;
+  products: Product[];
+  categories: Category[];
   initialTabs: TabSummary[];
   initialPayments: PaymentSummary[];
 };
@@ -33,6 +40,10 @@ export function TabList({
   businessDayId,
   businessDate,
   staffName,
+  staffId,
+  isAdmin,
+  products,
+  categories,
   initialTabs,
   initialPayments,
 }: Props) {
@@ -41,13 +52,14 @@ export function TabList({
   const [payments, setPayments] = useState(initialPayments);
   const [now, setNow] = useState(() => Date.now());
   const [creating, setCreating] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [settleOpen, setSettleOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [settleTargets, setSettleTargets] = useState<TabSummary[] | null>(null);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
@@ -71,12 +83,9 @@ export function TabList({
 
     if (tabsResult.data) {
       setTabs(
-        tabsResult.data
-          .map(toTabSummary)
-          .filter((tab): tab is TabSummary => tab !== null),
+        tabsResult.data.map(toTabSummary).filter((tab): tab is TabSummary => tab !== null),
       );
     }
-
     if (paymentsResult.data) {
       setPayments(
         paymentsResult.data
@@ -91,21 +100,14 @@ export function TabList({
     return () => clearInterval(timer);
   }, []);
 
-  // 端末 2〜3 台での同時操作を前提に、伝票と明細の変更を購読して一覧を作り直す。
-  // 合計金額は集計値なので、差分パッチではなく都度取り直すほうが確実。
+  // 端末 2〜3 台での同時操作を前提に、伝票・明細・会計の変更を購読して作り直す
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
       .channel(`floor:${businessDayId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tabs" }, () => {
-        void refetch();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
-        void refetch();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, () => {
-        void refetch();
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "tabs" }, () => void refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, () => void refetch())
       .subscribe();
 
     return () => {
@@ -124,38 +126,26 @@ export function TabList({
       .select("id")
       .single();
 
+    setCreating(false);
+
     if (insertError || !data) {
-      setCreating(false);
       setError("伝票を作成できませんでした。もう一度お試しください。");
       return;
     }
 
-    // 名前は後入力でよいので、そのまま注文画面へ送る（＋お客さん → 商品タップで 2 タップ）
-    router.push(`/floor/${data.id}`);
+    // 画面遷移せず、そのまま開いて注文を入れられるようにする
+    setExpandedId(data.id);
+    await refetch();
   }
 
-  function toggleSelected(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function exitSelecting() {
-    setSelecting(false);
-    setSelected(new Set());
-  }
-
-  async function settleSelected() {
+  async function settle(targets: TabSummary[]) {
     setSettling(true);
     setSettleError(null);
 
     const supabase = getSupabaseBrowserClient();
-    // 合計はサーバ側で明細から再計算されるので、選択中に他端末が注文を足していても金額はずれない
+    // 合計はサーバ側で明細から再計算される
     const { data: paymentId, error: rpcError } = await supabase.rpc("settle_tabs", {
-      tab_ids: selectedTabs.map((tab) => tab.id),
+      tab_ids: targets.map((tab) => tab.id),
     });
 
     if (rpcError) {
@@ -171,11 +161,10 @@ export function TabList({
       .maybeSingle();
 
     setSettling(false);
-    setSettleOpen(false);
+    setSettleTargets(null);
+    setExpandedId(null);
     exitSelecting();
-    setNotice(
-      payment ? `${formatYen(payment.total)} を会計しました` : "会計しました",
-    );
+    setNotice(payment ? `${formatYen(payment.total)} を会計しました` : "会計しました");
     await refetch();
   }
 
@@ -197,8 +186,21 @@ export function TabList({
       return;
     }
 
-    // 営業日が無くなるので、サーバ側で「本日の営業を開始」の画面に切り替わる
     router.refresh();
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelecting() {
+    setSelecting(false);
+    setSelected(new Set());
   }
 
   const selectedTabs = tabs.filter((tab) => selected.has(tab.id));
@@ -215,7 +217,14 @@ export function TabList({
               {formatBusinessDate(businessDate)} 営業中
             </span>
           </div>
-          <SignOutButton staffName={staffName} />
+          <div className="flex items-center gap-1">
+            {isAdmin && (
+              <Link href="/admin/sales" className="min-h-tap rounded-lg px-3 text-sm text-accent">
+                管理
+              </Link>
+            )}
+            <SignOutButton staffName={staffName} />
+          </div>
         </div>
 
         <div className="mt-2 flex items-center justify-between">
@@ -223,17 +232,16 @@ export function TabList({
             {tabs.length}組 / 合計 {formatYen(openTotal)}
           </span>
           {selecting ? (
-            <button
-              type="button"
-              onClick={exitSelecting}
-              className="min-h-tap px-2 text-sm text-ink-muted"
-            >
+            <button type="button" onClick={exitSelecting} className="min-h-tap px-2 text-sm text-ink-muted">
               選択をやめる
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => setSelecting(true)}
+              onClick={() => {
+                setExpandedId(null);
+                setSelecting(true);
+              }}
               disabled={tabs.length === 0}
               className="min-h-tap px-2 text-sm text-accent disabled:opacity-40"
             >
@@ -251,16 +259,29 @@ export function TabList({
             右下の「＋お客さん」から作成してください
           </p>
         ) : (
-          tabs.map((tab) => (
-            <TabCard
-              key={tab.id}
-              tab={tab}
-              now={now}
-              selecting={selecting}
-              selected={selected.has(tab.id)}
-              onToggle={toggleSelected}
-            />
-          ))
+          <ul className="flex flex-col gap-2">
+            {tabs.map((tab) => (
+              <TabCard
+                key={tab.id}
+                tab={tab}
+                now={now}
+                staffId={staffId}
+                products={products}
+                categories={categories}
+                expanded={expandedId === tab.id}
+                selecting={selecting}
+                selected={selected.has(tab.id)}
+                onToggleExpand={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+                onToggleSelect={toggleSelected}
+                onSettle={(target) => {
+                  setSettleError(null);
+                  setSettleTargets([target]);
+                }}
+                onDeleted={() => void refetch()}
+                onChanged={() => void refetch()}
+              />
+            ))}
+          </ul>
         )}
 
         {!selecting && <PaidSection payments={payments} onVoided={() => void refetch()} />}
@@ -285,7 +306,6 @@ export function TabList({
           {notice}
         </p>
       )}
-
       {error && (
         <p role="alert" className="px-5 pb-2 text-sm text-danger">
           {error}
@@ -296,26 +316,19 @@ export function TabList({
         <div className="sticky bottom-0 border-t border-line bg-surface px-5 pt-3 pb-safe">
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-muted">{selectedTabs.length}枚を選択</span>
-            <span className="text-2xl font-bold tabular-nums">
-              {formatYen(selectedTotal)}
-            </span>
+            <span className="text-2xl font-bold tabular-nums">{formatYen(selectedTotal)}</span>
           </div>
           <button
             type="button"
             onClick={() => {
               setSettleError(null);
-              setSettleOpen(true);
+              setSettleTargets(selectedTabs);
             }}
             disabled={selectedTabs.length === 0}
             className="mt-2 min-h-14 w-full rounded-xl bg-accent text-lg font-bold text-accent-ink disabled:opacity-40"
           >
             まとめて会計
           </button>
-          {selectedTabs.length === 0 && (
-            <p className="mt-1 text-center text-xs text-ink-muted">
-              会計する伝票を選んでください
-            </p>
-          )}
         </div>
       ) : (
         <div className="pointer-events-none sticky bottom-0 flex justify-end px-5 pb-safe">
@@ -330,19 +343,23 @@ export function TabList({
         </div>
       )}
 
-      {settleOpen && (
+      {settleTargets && (
         <SettleSheet
-          title={`まとめて会計（${selectedTabs.length}枚）`}
-          lines={selectedTabs.map((tab) => ({
+          title={
+            settleTargets.length === 1
+              ? `${guestLabel(settleTargets[0].guestName, settleTargets[0].seq)} の会計`
+              : `まとめて会計（${settleTargets.length}枚）`
+          }
+          lines={settleTargets.map((tab) => ({
             key: tab.id,
             label: guestLabel(tab.guestName, tab.seq),
             amount: tab.total,
           }))}
-          total={selectedTotal}
+          total={settleTargets.reduce((sum, tab) => sum + tab.total, 0)}
           pending={settling}
           error={settleError}
-          onConfirm={() => void settleSelected()}
-          onClose={() => setSettleOpen(false)}
+          onConfirm={() => void settle(settleTargets)}
+          onClose={() => setSettleTargets(null)}
         />
       )}
 

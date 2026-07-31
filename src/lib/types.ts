@@ -2,7 +2,12 @@ import type { Database } from "./database.types";
 
 export type Product = Pick<
   Database["public"]["Tables"]["products"]["Row"],
-  "id" | "name" | "price" | "category"
+  "id" | "name" | "price" | "category_id"
+>;
+
+export type Category = Pick<
+  Database["public"]["Tables"]["categories"]["Row"],
+  "id" | "name" | "sort_order"
 >;
 
 export type BusinessDay = Database["public"]["Tables"]["business_days"]["Row"];

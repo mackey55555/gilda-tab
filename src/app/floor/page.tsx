@@ -28,40 +28,53 @@ export default async function FloorPage() {
     return (
       <OpenDayPanel
         staffName={staff.name}
+        isAdmin={staff.role === "admin"}
         reopenTarget={staff.role === "admin" ? lastClosed : null}
       />
     );
   }
 
-  const [{ data: tabRows }, { data: paymentRows }] = await Promise.all([
-    supabase
-      .from("tab_summaries")
-      .select("*")
-      .eq("business_day_id", businessDay.id)
-      .eq("status", "open")
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("payment_summaries")
-      .select("*")
-      .eq("business_day_id", businessDay.id)
-      .order("paid_at", { ascending: false }),
-  ]);
-
-  const initialTabs = (tabRows ?? [])
-    .map(toTabSummary)
-    .filter((tab): tab is NonNullable<typeof tab> => tab !== null);
-
-  const initialPayments = (paymentRows ?? [])
-    .map(toPaymentSummary)
-    .filter((payment): payment is NonNullable<typeof payment> => payment !== null);
+  const [{ data: tabRows }, { data: paymentRows }, { data: products }, { data: categories }] =
+    await Promise.all([
+      supabase
+        .from("tab_summaries")
+        .select("*")
+        .eq("business_day_id", businessDay.id)
+        .eq("status", "open")
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("payment_summaries")
+        .select("*")
+        .eq("business_day_id", businessDay.id)
+        .order("paid_at", { ascending: false }),
+      supabase
+        .from("products")
+        .select("id, name, price, category_id")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("categories")
+        .select("id, name, sort_order")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+    ]);
 
   return (
     <TabList
       businessDayId={businessDay.id}
       businessDate={businessDay.date}
       staffName={staff.name}
-      initialTabs={initialTabs}
-      initialPayments={initialPayments}
+      staffId={staff.id}
+      isAdmin={staff.role === "admin"}
+      products={products ?? []}
+      categories={categories ?? []}
+      initialTabs={(tabRows ?? [])
+        .map(toTabSummary)
+        .filter((tab): tab is NonNullable<typeof tab> => tab !== null)}
+      initialPayments={(paymentRows ?? [])
+        .map(toPaymentSummary)
+        .filter((payment): payment is NonNullable<typeof payment> => payment !== null)}
     />
   );
 }

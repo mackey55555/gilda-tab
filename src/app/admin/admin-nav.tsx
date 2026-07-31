@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/admin/sales", label: "売上集計" },
   { href: "/admin/products", label: "商品マスタ" },
+  { href: "/admin/categories", label: "カテゴリ" },
   { href: "/admin/staff", label: "スタッフ" },
   { href: "/admin/business-days", label: "営業日" },
 ] as const;

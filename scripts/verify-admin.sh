@@ -95,9 +95,11 @@ for id in $OTHER_ADMINS; do admin_rest PATCH "/staff?id=eq.$id" '{"role":"admin"
 
 echo
 echo "=== 商品マスタの権限 ==="
-rest POST "/products" "$ATOK" '{"name":"検証用A","price":100,"category":"検証","sort_order":9001}'
+rest POST "/categories" "$ATOK" '{"name":"検証カテゴリ","sort_order":9000}'
+CAT=$(printf '%s' "$BODY" | jq -r '.[0].id')
+rest POST "/products" "$ATOK" "{\"name\":\"検証用A\",\"price\":100,\"category_id\":\"$CAT\",\"sort_order\":9001}"
 PA=$(printf '%s' "$BODY" | jq -r '.[0].id')
-rest POST "/products" "$ATOK" '{"name":"検証用B","price":200,"category":"検証","sort_order":9002}'
+rest POST "/products" "$ATOK" "{\"name\":\"検証用B\",\"price\":200,\"category_id\":\"$CAT\",\"sort_order\":9002}"
 PB=$(printf '%s' "$BODY" | jq -r '.[0].id')
 check "admin は商品を追加できる" "$([ "$CODE" = "201" ] && echo 0 || echo 1)" "$CODE $BODY"
 
@@ -114,36 +116,29 @@ check "admin は無効化できる" \
 rest PATCH "/products?id=eq.$PA" "$ATOK" '{"is_active":true}' >/dev/null
 
 echo
-echo "=== 表示順の入れ替え ==="
-rest POST "/rpc/move_product" "$STOK" "{\"target_product_id\":\"$PA\",\"direction\":\"down\"}"
+echo "=== 表示順の入れ替え（ドラッグ＆ドロップ） ==="
+rest GET "/products?select=id&order=sort_order.asc,name.asc" "$ATOK"
+ALL_IDS=$(printf '%s' "$BODY" | jq -r '[.[].id] | join("\",\"")')
+SWAPPED=$(printf '%s' "$BODY" | jq -c --arg a "$PA" --arg b "$PB" '[.[].id] | (index($a)) as $i | (index($b)) as $j | .[$i] = $b | .[$j] = $a')
+
+rest POST "/rpc/reorder_products" "$STOK" "{\"product_ids\":$SWAPPED}"
 check "スタッフは並べ替えできない" "$([ "$CODE" != "204" ] && echo 0 || echo 1)" "$CODE $BODY"
 
-rest GET "/products?select=id,name,sort_order&order=sort_order.asc,name.asc" "$ATOK"
-BEFORE_A=$(printf '%s' "$BODY" | jq -r --arg id "$PA" 'map(.id) | index($id)')
-BEFORE_B=$(printf '%s' "$BODY" | jq -r --arg id "$PB" 'map(.id) | index($id)')
-
-rest POST "/rpc/move_product" "$ATOK" "{\"target_product_id\":\"$PA\",\"direction\":\"down\"}"
+rest POST "/rpc/reorder_products" "$ATOK" "{\"product_ids\":$SWAPPED}"
 M_CODE=$CODE
-rest GET "/products?select=id,name,sort_order&order=sort_order.asc,name.asc" "$ATOK"
-AFTER_A=$(printf '%s' "$BODY" | jq -r --arg id "$PA" 'map(.id) | index($id)')
-AFTER_B=$(printf '%s' "$BODY" | jq -r --arg id "$PB" 'map(.id) | index($id)')
-check "admin は下へ移動できる（A:${BEFORE_A}→${AFTER_A} / B:${BEFORE_B}→${AFTER_B}）" \
-  "$([ "$M_CODE" = "204" ] && [ "$AFTER_A" = "$BEFORE_B" ] && [ "$AFTER_B" = "$BEFORE_A" ] && echo 0 || echo 1)" \
-  "$M_CODE / A ${BEFORE_A}→${AFTER_A} B ${BEFORE_B}→${AFTER_B}"
-
-rest POST "/rpc/move_product" "$ATOK" "{\"target_product_id\":\"$PA\",\"direction\":\"up\"}"
 rest GET "/products?select=id&order=sort_order.asc,name.asc" "$ATOK"
-BACK_A=$(printf '%s' "$BODY" | jq -r --arg id "$PA" 'map(.id) | index($id)')
-check "上へ移動で元の位置に戻る" "$([ "$BACK_A" = "$BEFORE_A" ] && echo 0 || echo 1)" "$BACK_A vs $BEFORE_A"
+NEW_A=$(printf '%s' "$BODY" | jq -r --arg id "$PA" 'map(.id) | index($id)')
+NEW_B=$(printf '%s' "$BODY" | jq -r --arg id "$PB" 'map(.id) | index($id)')
+check "admin は並べ替えできる（A:${NEW_A} / B:${NEW_B}）" \
+  "$([ "$M_CODE" = "204" ] && [ "$NEW_A" -gt "$NEW_B" ] && echo 0 || echo 1)" "$M_CODE / A ${NEW_A} B ${NEW_B}"
 
 rest GET "/products?select=sort_order&order=sort_order.asc" "$ATOK"
 DUP=$(printf '%s' "$BODY" | jq '[.[].sort_order] | (length - (unique | length))')
 check "並べ替え後も sort_order が重複しない" "$([ "$DUP" = "0" ] && echo 0 || echo 1)" "重複 $DUP 件"
 
-rest POST "/rpc/move_product" "$ATOK" "{\"target_product_id\":\"$PA\",\"direction\":\"sideways\"}"
-check "不正な方向は拒否される" "$([ "$CODE" != "204" ] && echo 0 || echo 1)" "$CODE $BODY"
+rest POST "/rpc/reorder_categories" "$STOK" '{"category_ids":[]}'
+check "スタッフはカテゴリを並べ替えできない" "$([ "$CODE" != "204" ] && echo 0 || echo 1)" "$CODE $BODY"
 
-echo
 echo "=== 削除の可否（注文実績あり / なし） ==="
 rest GET "/rpc/product_is_used?target_product_id=$PA" "$ATOK"
 check "未使用の商品は product_is_used が false" "$([ "$BODY" = "false" ] && echo 0 || echo 1)" "$BODY"
@@ -173,6 +168,7 @@ admin_rest DELETE "/order_items?tab_id=eq.$TAB" >/dev/null
 admin_rest DELETE "/tabs?id=eq.$TAB" >/dev/null
 admin_rest DELETE "/business_days?id=eq.$BD" >/dev/null
 admin_rest DELETE "/products?id=in.($PA,$PB)" >/dev/null
+admin_rest DELETE "/categories?id=eq.$CAT" >/dev/null
 for uid in "$ADMIN_ID" "$STAFF_ID"; do
   curl -s -X DELETE "$URL/auth/v1/admin/users/$uid" -H "apikey: $SECRET" -H "Authorization: Bearer $SECRET" >/dev/null
 done

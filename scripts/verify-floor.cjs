@@ -194,20 +194,25 @@ const asUser = (token, method, pathname, body) =>
   );
   check("FAB「＋お客さん」がある", html.includes("＋お客さん"), "FAB なし");
 
-  console.log("\n=== 伝票詳細 ===");
-  res = await get(`/floor/${tab1Id}`);
-  html = strip(await res.text());
-  check("伝票詳細が 200 で描画される", res.status === 200, `${res.status}`);
-  check("商品グリッドに seed 商品が出る", html.includes(beer.name), `${beer.name} なし`);
-  check("カテゴリタブが出る", html.includes("すべて"), "カテゴリタブなし");
-  check(
-    "明細がグルーピングされて ×2 表示になる",
-    html.includes("× 2"),
-    "グルーピング表示なし",
+  // 1 画面化したので詳細ページは無い。カード上の導線と、開いたときに使う明細を確認する。
+  check("カードに会計ボタンがある", html.includes(">会計<"), "会計ボタンなし");
+  check("営業終了の導線がある", html.includes("本日の営業を終了"), "終了ボタンなし");
+
+  const detail = await asUser(
+    token,
+    "GET",
+    `/order_items?tab_id=eq.${tab1Id}&select=name_snapshot,price_snapshot,qty&order=created_at`,
   );
-  check("フリー金額明細「その他」が明細に出る", html.includes("その他"), "その他 なし");
-  check(`合計が ${expectedYen} で出る`, html.includes(expectedYen), "合計なし");
-  check("会計ボタンが（無効で）ある", html.includes("会計する"), "会計ボタンなし");
+  check(
+    "アコーディオンに出す明細が API から取れる（3行）",
+    detail.body?.length === 3,
+    JSON.stringify(detail.body),
+  );
+  check(
+    "同一商品が 2 行に分かれている（グルーピング前の追記型）",
+    detail.body?.filter((row) => row.name_snapshot === beer.name).length === 2,
+    JSON.stringify(detail.body),
+  );
 
   console.log("\n=== 会計（settle_tabs）後の描画 ===");
   const settle = await fetch(`${URL_}/rest/v1/rpc/settle_tabs`, {
@@ -222,28 +227,14 @@ const asUser = (token, method, pathname, body) =>
   html = strip(await res.text());
   // 客名の文字列は会計済みセクションの props として RSC ペイロードにも載るため、
   // 「伝票カードのリンクが消えたか」で判定する
-  check(
-    "会計した伝票が open 一覧から消える",
-    !html.includes(`/floor/${tab1Id}"`),
-    "伝票カードのリンクが残っている",
+  const openTabs = await asUser(
+    token,
+    "GET",
+    `/tab_summaries?id=eq.${tab1Id}&status=eq.open&select=id`,
   );
+  check("会計した伝票が open 一覧から消える", openTabs.body?.length === 0, JSON.stringify(openTabs.body));
   check("会計済みセクションが出る", html.includes("会計済み"), "会計済みセクションなし");
   check(`会計済みの金額が出る (${expectedYen})`, html.includes(expectedYen), "金額なし");
-
-  res = await get(`/floor/${tab1Id}`);
-  html = strip(await res.text());
-  check("会計済み伝票を開くと編集不可の表示になる", html.includes("会計済みの伝票です"), "表示なし");
-
-  console.log("\n=== 存在しない伝票 ===");
-  // loading.tsx の Suspense 境界があると notFound() のステータスが 200 になるため、
-  // 汎用 404 ではなく戻り導線のある画面を出している。文言で判定する。
-  res = await get("/floor/00000000-0000-0000-0000-000000000000", cookieHeader);
-  html = strip(await res.text());
-  check(
-    "存在しない伝票は案内画面になる",
-    html.includes("伝票が見つかりません") && html.includes("伝票一覧へ戻る"),
-    `${res.status}`,
-  );
 
   console.log("\n=== 後片付け ===");
   // 後片付けは「このスクリプトが作った行」だけを対象にする。
