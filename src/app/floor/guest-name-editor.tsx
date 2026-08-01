@@ -10,7 +10,8 @@ type Props = {
   seq: number;
   guestName: string | null;
   editable: boolean;
-  onChange: (name: string | null) => void;
+  /** 保存できたら親に再取得させる */
+  onChange: () => void;
 };
 
 /** 客名。仮名（客1・客2）のままでも運用できるので、常に任意入力。 */
@@ -40,7 +41,7 @@ export function GuestNameEditor({ tabId, seq, guestName, editable, onChange }: P
       return;
     }
 
-    onChange(next);
+    onChange();
     setEditing(false);
   }
 
@@ -50,6 +51,7 @@ export function GuestNameEditor({ tabId, seq, guestName, editable, onChange }: P
         type="button"
         onClick={() => {
           if (!editable) return;
+          // 開くたびに現在の値を入れ直す（前回の入力途中が残らないように）
           setDraft(guestName ?? "");
           setEditing(true);
         }}

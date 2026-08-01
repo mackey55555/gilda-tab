@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatYen } from "@/lib/format";
 
 import { CustomerView } from "./customer-view";
+import { TaxNote } from "./tax-note";
 
 export type SettleLine = {
   key: string;
@@ -67,9 +68,12 @@ export function SettleSheet({ title, lines, total, pending, error, onConfirm, on
             ))}
           </ul>
 
-          <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
-            <span className="text-sm text-ink-muted">合計</span>
-            <span className="text-4xl font-bold tabular-nums">{formatYen(total)}</span>
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-ink-muted">合計</span>
+              <span className="text-4xl font-bold tabular-nums">{formatYen(total)}</span>
+            </div>
+            <TaxNote total={total} className="mt-1 text-right" />
           </div>
 
           {error && (
@@ -99,7 +103,6 @@ export function SettleSheet({ title, lines, total, pending, error, onConfirm, on
 
       {showCustomer && (
         <CustomerView
-          title={title}
           lines={lines}
           total={total}
           onClose={() => setShowCustomer(false)}

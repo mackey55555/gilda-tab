@@ -66,6 +66,22 @@ export function TabList({
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
 
+  // useState の初期値はマウント時にしか使われないため、router.refresh() などで
+  // サーバから新しい値が来ても反映されない。届いたらレンダー中に追随させる
+  // （effect で setState すると余分なレンダーを挟むため、React 公式の
+  //  「レンダー中に状態を調整する」パターンを使う）。
+  const [lastServerTabs, setLastServerTabs] = useState(initialTabs);
+  if (initialTabs !== lastServerTabs) {
+    setLastServerTabs(initialTabs);
+    setTabs(initialTabs);
+  }
+
+  const [lastServerPayments, setLastServerPayments] = useState(initialPayments);
+  if (initialPayments !== lastServerPayments) {
+    setLastServerPayments(initialPayments);
+    setPayments(initialPayments);
+  }
+
   const refetch = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
 
@@ -101,6 +117,8 @@ export function TabList({
     const timer = setInterval(() => setNow(Date.now()), ELAPSED_TICK_MS);
     return () => clearInterval(timer);
   }, []);
+
+
 
   // 端末 2〜3 台での同時操作を前提に、伝票・明細・会計の変更を購読して作り直す
   useEffect(() => {

@@ -4,6 +4,20 @@ export function formatYen(amount: number): string {
   return `${sign}¥${Math.abs(amount).toLocaleString("ja-JP")}`;
 }
 
+/** 消費税率。酒類・外食はどちらも軽減税率の対象外なので一律 10%。 */
+export const TAX_RATE = 0.1;
+
+/**
+ * 税込金額から領収書に書く内訳を出す。
+ *
+ * 本アプリの価格は全て税込なので、外税表記が必要なときはここから逆算する。
+ * 本体価格は切り捨て、消費税は差額にして、本体 + 税 = 税込 が必ず一致するようにする。
+ */
+export function taxBreakdown(totalIncludingTax: number): { net: number; tax: number } {
+  const net = Math.floor(totalIncludingTax / (1 + TAX_RATE));
+  return { net, tax: totalIncludingTax - net };
+}
+
 /** グラフの軸ラベル用。桁が多いと軸が読めなくなるので万単位に丸める。 */
 export function formatCompactYen(amount: number): string {
   if (amount === 0) return "0";

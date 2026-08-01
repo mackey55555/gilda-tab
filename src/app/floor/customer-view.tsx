@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { formatYen } from "@/lib/format";
+import { formatYen, taxBreakdown, TAX_RATE } from "@/lib/format";
 
 import type { SettleLine } from "./settle-sheet";
 
 type Props = {
-  title: string;
   lines: SettleLine[];
   total: number;
   onClose: () => void;
@@ -16,11 +15,13 @@ type Props = {
 /**
  * お客様に金額を見せるための表示。
  *
+ * こちらで設定した客名は出さない。仮名や打ち間違いをお客様に見せると気まずいため。
+ *
  * 端末を横に倒して渡す前提だが、スマホは回転ロックしていることが多く
  * 端末の向きに任せると縦のままになる。そこで縦向きのときは中身を 90 度回して
  * 常に横長で出す。すでに横向きなら二重に回さない。
  */
-export function CustomerView({ title, lines, total, onClose }: Props) {
+export function CustomerView({ lines, total, onClose }: Props) {
   const [landscape, setLandscape] = useState(false);
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export function CustomerView({ title, lines, total, onClose }: Props) {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm tracking-widest text-accent">gilda</p>
-            <p className="mt-0.5 text-lg text-ink-muted">{title}</p>
+            <p className="mt-0.5 text-lg text-ink-muted">お会計</p>
           </div>
           <button
             type="button"
@@ -87,7 +88,9 @@ export function CustomerView({ title, lines, total, onClose }: Props) {
             <p className="text-[clamp(3rem,14vh,7rem)] leading-none font-bold tabular-nums text-accent">
               {formatYen(total)}
             </p>
-            <p className="mt-2 text-sm text-ink-muted">税込</p>
+            <p className="mt-2 text-sm text-ink-muted">
+              税込（内 消費税{Math.round(TAX_RATE * 100)}% {formatYen(taxBreakdown(total).tax)}）
+            </p>
           </div>
         </div>
       </div>

@@ -50,7 +50,6 @@ export function TabCard({
   const [revealed, setRevealed] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [guestName, setGuestName] = useState(tab.guestName);
   const [error, setError] = useState<string | null>(null);
 
   const drag = useRef<{ x: number; y: number; axis: "none" | "x" | "y" } | null>(null);
@@ -128,7 +127,9 @@ export function TabCard({
     onDeleted();
   }
 
-  const label = guestLabel(guestName, tab.seq);
+  // 客名は state にコピーしない。コピーすると保存後にサーバから届いた値と食い違い、
+  // 再マウントのタイミングで古い値（＝仮名）に戻って見える。
+  const label = guestLabel(tab.guestName, tab.seq);
 
   return (
     <li className="relative overflow-hidden rounded-xl">
@@ -203,7 +204,7 @@ export function TabCard({
           {!selecting && (
             <button
               type="button"
-              onClick={() => onSettle({ ...tab, guestName, total })}
+              onClick={() => onSettle({ ...tab, total })}
               disabled={tab.itemCount === 0 && !items.loaded}
               className="my-2 mr-2 w-16 shrink-0 rounded-lg bg-accent text-sm font-bold text-accent-ink disabled:opacity-30"
             >
@@ -217,12 +218,9 @@ export function TabCard({
             <GuestNameEditor
               tabId={tab.id}
               seq={tab.seq}
-              guestName={guestName}
+              guestName={tab.guestName}
               editable
-              onChange={(next) => {
-                setGuestName(next);
-                onChanged();
-              }}
+              onChange={onChanged}
             />
 
             <ul className="mt-3 flex flex-col gap-1.5">
