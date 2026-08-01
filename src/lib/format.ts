@@ -14,7 +14,9 @@ export const TAX_RATE = 0.1;
  * 本体価格は切り捨て、消費税は差額にして、本体 + 税 = 税込 が必ず一致するようにする。
  */
 export function taxBreakdown(totalIncludingTax: number): { net: number; tax: number } {
-  const net = Math.floor(totalIncludingTax / (1 + TAX_RATE));
+  // total / 1.1 は浮動小数点の誤差で 1 円ずれる（3300 / 1.1 = 2999.9999...）。
+  // 10 / 11 の整数演算にして、切りのいい金額が正しく割れるようにする。
+  const net = Math.floor((totalIncludingTax * 10) / 11);
   return { net, tax: totalIncludingTax - net };
 }
 

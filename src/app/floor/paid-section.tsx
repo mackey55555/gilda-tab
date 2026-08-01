@@ -6,6 +6,8 @@ import { formatYen } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PaymentSummary } from "@/lib/types";
 
+import { TaxNote } from "./tax-note";
+
 type Props = {
   payments: PaymentSummary[];
   onVoided: () => void;
@@ -60,6 +62,8 @@ export function PaidSection({ payments, onVoided }: Props) {
         <span className="text-sm tabular-nums text-ink-muted">{formatYen(total)}</span>
       </button>
 
+      {expanded && <TaxNote total={total} className="border-t border-line px-4 py-2 text-right" />}
+
       {expanded && (
         <ul className="flex flex-col gap-1 border-t border-line p-2">
           {payments.map((payment) => (
@@ -82,6 +86,9 @@ export function PaidSection({ payments, onVoided }: Props) {
                   {formatYen(payment.total)}
                 </span>
               </div>
+
+              {/* 会計後に領収書を書く場面があるので、外税の内訳をここでも出す */}
+              <TaxNote total={payment.total} className="mt-1 text-right" />
 
               {confirmingId === payment.id ? (
                 <div className="mt-2 flex items-center gap-2">
