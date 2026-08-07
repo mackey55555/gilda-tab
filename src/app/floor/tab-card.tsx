@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { formatElapsed, formatYen, guestLabel } from "@/lib/format";
+import type { GuestSuggestion } from "@/lib/guest-suggestions";
 import type { Category, Product, TabSummary } from "@/lib/types";
 
 import { GuestNameEditor } from "./guest-name-editor";
@@ -20,6 +21,7 @@ type Props = {
   staffId: string;
   products: Product[];
   categories: Category[];
+  guestSuggestions: GuestSuggestion[];
   expanded: boolean;
   selecting: boolean;
   selected: boolean;
@@ -36,6 +38,7 @@ export function TabCard({
   staffId,
   products,
   categories,
+  guestSuggestions,
   expanded,
   selecting,
   selected,
@@ -219,6 +222,7 @@ export function TabCard({
               tabId={tab.id}
               seq={tab.seq}
               guestName={tab.guestName}
+              suggestions={guestSuggestions}
               editable
               onChange={onChanged}
             />

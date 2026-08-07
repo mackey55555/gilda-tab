@@ -1,4 +1,5 @@
 import { requireStaff } from "@/lib/auth";
+import { buildGuestSuggestions } from "@/lib/guest-suggestions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { toPaymentSummary, toTabSummary } from "@/lib/types";
 
@@ -34,8 +35,13 @@ export default async function FloorPage() {
     );
   }
 
-  const [{ data: tabRows }, { data: paymentRows }, { data: products }, { data: categories }] =
-    await Promise.all([
+  const [
+    { data: tabRows },
+    { data: paymentRows },
+    { data: products },
+    { data: categories },
+    { data: pastGuests },
+  ] = await Promise.all([
       supabase
         .from("tab_summaries")
         .select("*")
@@ -58,6 +64,13 @@ export default async function FloorPage() {
         .select("id, name, sort_order")
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true }),
+      // 客名の入力候補。専用テーブルは作らず既存の伝票から集計する
+      supabase
+        .from("tabs")
+        .select("guest_name")
+        .not("guest_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(2000),
     ]);
 
   return (
@@ -69,6 +82,7 @@ export default async function FloorPage() {
       isAdmin={staff.role === "admin"}
       products={products ?? []}
       categories={categories ?? []}
+      guestSuggestions={buildGuestSuggestions(pastGuests ?? [])}
       initialTabs={(tabRows ?? [])
         .map(toTabSummary)
         .filter((tab): tab is NonNullable<typeof tab> => tab !== null)}

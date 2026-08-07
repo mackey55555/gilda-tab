@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { formatBusinessDate, formatYen, guestLabel } from "@/lib/format";
+import type { GuestSuggestion } from "@/lib/guest-suggestions";
 import { groupOrderItems } from "@/lib/order-groups";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -33,6 +34,7 @@ type Props = {
   isAdmin: boolean;
   products: Product[];
   categories: Category[];
+  guestSuggestions: GuestSuggestion[];
   initialTabs: TabSummary[];
   initialPayments: PaymentSummary[];
 };
@@ -45,6 +47,7 @@ export function TabList({
   isAdmin,
   products,
   categories,
+  guestSuggestions,
   initialTabs,
   initialPayments,
 }: Props) {
@@ -318,6 +321,7 @@ export function TabList({
                 staffId={staffId}
                 products={products}
                 categories={categories}
+                guestSuggestions={guestSuggestions}
                 expanded={expandedId === tab.id}
                 selecting={selecting}
                 selected={selected.has(tab.id)}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { guestLabel } from "@/lib/format";
+import { filterGuestSuggestions, type GuestSuggestion } from "@/lib/guest-suggestions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Props = {
@@ -10,19 +11,24 @@ type Props = {
   seq: number;
   guestName: string | null;
   editable: boolean;
+  /** 過去に使った客名。よく使う順。 */
+  suggestions: GuestSuggestion[];
   /** 保存できたら親に再取得させる */
   onChange: () => void;
 };
 
 /** 客名。仮名（客1・客2）のままでも運用できるので、常に任意入力。 */
-export function GuestNameEditor({ tabId, seq, guestName, editable, onChange }: Props) {
+export function GuestNameEditor({ tabId, seq, guestName, editable, suggestions, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(guestName ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save() {
-    const trimmed = draft.trim();
+  // 入力途中の文字で絞る。空のときはよく使う名前をそのまま出す。
+  const matched = filterGuestSuggestions(suggestions, draft);
+
+  async function save(value?: string) {
+    const trimmed = (value ?? draft).trim();
     const next = trimmed === "" ? null : trimmed;
 
     setSaving(true);
@@ -77,6 +83,7 @@ export function GuestNameEditor({ tabId, seq, guestName, editable, onChange }: P
             if (event.key === "Enter") void save();
             if (event.key === "Escape") setEditing(false);
           }}
+          autoComplete="off"
           className="min-h-tap min-w-0 flex-1 rounded-lg border border-line bg-raised px-3 text-lg outline-none focus:border-accent"
         />
         <button
@@ -95,6 +102,29 @@ export function GuestNameEditor({ tabId, seq, guestName, editable, onChange }: P
           取消
         </button>
       </div>
+      {matched.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {matched.map((suggestion) => (
+            <button
+              key={suggestion.name}
+              type="button"
+              onClick={() => {
+                setDraft(suggestion.name);
+                // 選んだ時点で確定させる。1 タップで済ませたいので保存まで行う。
+                void save(suggestion.name);
+              }}
+              disabled={saving}
+              className="min-h-tap rounded-full border border-line bg-raised px-4 text-sm disabled:opacity-50"
+            >
+              {suggestion.name}
+              {suggestion.count > 1 && (
+                <span className="ml-1.5 text-xs text-ink-muted">{suggestion.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="text-sm text-danger">
           {error}
