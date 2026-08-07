@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 import { formatBusinessDate, formatYen } from "@/lib/format";
+import { buildGuestRanking } from "@/lib/guest-ranking";
 import { hourLabel, resolvePeriod } from "@/lib/sales";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { BarChart } from "./bar-chart";
 import { PeriodPicker } from "./period-picker";
+import { GuestRanking } from "./guest-ranking";
 import { ProductRanking } from "./product-ranking";
 
 export default async function SalesPage({
@@ -18,10 +20,12 @@ export default async function SalesPage({
   const supabase = await createSupabaseServerClient();
 
   const range = { from_date: period.from, to_date: period.to };
-  const [daily, byProduct, byHour] = await Promise.all([
+  const [daily, byProduct, byHour, items] = await Promise.all([
     supabase.rpc("sales_by_day", range),
     supabase.rpc("sales_by_product", range),
     supabase.rpc("sales_by_hour", range),
+    // 客別は専用の集計関数を作らず、明細から組み立てる
+    supabase.rpc("sales_items", range),
   ]);
 
   const days = daily.data ?? [];
@@ -134,6 +138,8 @@ export default async function SalesPage({
       </section>
 
       <ProductRanking rows={products} />
+
+      <GuestRanking rows={buildGuestRanking(items.data ?? [])} />
     </div>
   );
 }

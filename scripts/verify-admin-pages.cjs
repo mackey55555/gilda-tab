@@ -184,6 +184,7 @@ const get = (pathname, cookie) =>
   check("時間帯別のセクションが出る", html.includes("時間帯別売上"), "時間帯なし");
   check("24時以降の注記が出る", html.includes("24 時台"), "注記なし");
   check("商品別ランキングが出る", html.includes("商品別ランキング"), "商品別なし");
+  check("客別ランキングが出る", html.includes("客別ランキング"), "客別なし");
   check("CSV リンクが3種ある", ["日別 CSV", "商品別 CSV", "明細 CSV"].every((l) => html.includes(l)), "CSV リンク不足");
   check("集計金額が出る（800x2 + 1500 = ¥3,100）", html.includes("¥3,100"), "金額なし");
 
