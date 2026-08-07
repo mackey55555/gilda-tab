@@ -72,6 +72,7 @@ export function BusinessDayTable({ initialDays }: { initialDays: AdminBusinessDa
       <h1 className="text-2xl font-bold">営業日</h1>
 
       <p className="text-sm text-ink-muted">
+        「明細を見る」で、その営業日の伝票ごとの注文内容（客名・商品・時刻・担当）を確認できます。
         通常の開始・終了は営業画面（/floor）から行います。ここはクローズし忘れた営業日の後始末と、
         誤って終了した営業日の再開のためのものです。同時に開ける営業日は 1 つだけです。
       </p>
@@ -103,7 +104,7 @@ export function BusinessDayTable({ initialDays }: { initialDays: AdminBusinessDa
             <th className="w-24 px-3 py-1 font-normal">閉店</th>
             <th className="w-20 px-3 py-1 text-right font-normal">伝票</th>
             <th className="w-32 px-3 py-1 text-right font-normal">売上</th>
-            <th className="w-44 px-3 py-1 font-normal">操作</th>
+            <th className="w-64 px-3 py-1 font-normal">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -145,6 +146,13 @@ export function BusinessDayTable({ initialDays }: { initialDays: AdminBusinessDa
                   {formatYen(day.total)}
                 </td>
                 <td className="rounded-r-lg bg-surface px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/admin/sales/${day.id}`}
+                      className="rounded border border-line px-2 py-1 text-xs text-ink-muted"
+                    >
+                      明細を見る
+                    </Link>
                   {open ? (
                     <button
                       type="button"
@@ -165,6 +173,7 @@ export function BusinessDayTable({ initialDays }: { initialDays: AdminBusinessDa
                       再開する
                     </button>
                   )}
+                  </div>
                 </td>
               </tr>
             );
