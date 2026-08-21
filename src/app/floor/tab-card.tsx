@@ -56,7 +56,7 @@ export function TabCard({
   const [error, setError] = useState<string | null>(null);
 
   const drag = useRef<{ x: number; y: number; axis: "none" | "x" | "y" } | null>(null);
-  const items = useTabItems(tab.id, staffId, expanded);
+  const items = useTabItems(tab.id, staffId, expanded, onChanged);
 
   // 明細のある伝票は DB 側でも削除できない。誤って売上を消さないための決まり。
   const canDelete = tab.itemCount === 0;
@@ -189,8 +189,13 @@ export function TabCard({
                 closeReveal();
                 return;
               }
-              if (selecting) onToggleSelect(tab.id);
-              else onToggleExpand(tab.id);
+              if (selecting) {
+                onToggleSelect(tab.id);
+                return;
+              }
+              // 閉じる直前に取り直して、一覧の集計が古いまま残らないようにする
+              if (expanded) onChanged();
+              onToggleExpand(tab.id);
             }}
             aria-expanded={expanded}
             className="flex min-h-16 min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3 text-left"
@@ -267,10 +272,7 @@ export function TabCard({
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => {
-                            items.removeOne(group);
-                            onChanged();
-                          }}
+                          onClick={() => items.removeOne(group)}
                           aria-label={`${group.name} を1つ減らす`}
                           className="size-tap rounded-lg border border-line text-xl leading-none active:bg-surface"
                         >
@@ -278,14 +280,13 @@ export function TabCard({
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={() =>
                             items.addOne({
                               productId: group.items[0].product_id,
                               name: group.name,
                               price: group.price,
-                            });
-                            onChanged();
-                          }}
+                            })
+                          }
                           aria-label={`${group.name} を1つ増やす`}
                           className="size-tap rounded-lg border border-line text-xl leading-none active:bg-surface"
                         >
@@ -326,10 +327,7 @@ export function TabCard({
           title={`${label} に追加`}
           products={products}
           categories={categories}
-          onPick={(item) => {
-            items.addOne(item);
-            onChanged();
-          }}
+          onPick={(item) => items.addOne(item)}
           onClose={() => setModalOpen(false)}
         />
       )}

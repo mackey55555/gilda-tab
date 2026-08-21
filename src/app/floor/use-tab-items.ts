@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createLocalId } from "@/lib/local-id";
 import { groupOrderItems, sumItems, type OrderGroup } from "@/lib/order-groups";
@@ -17,10 +17,23 @@ export type NewItem = { productId: string | null; name: string; price: number };
  * 書き込みは楽観的に反映し、失敗した行は sync: "failed" にして再試行できるようにする
  * （電波が悪い店内で、送信できたかどうかが分からない状態を作らないため）。
  */
-export function useTabItems(tabId: string, staffId: string, enabled: boolean) {
+export function useTabItems(
+  tabId: string,
+  staffId: string,
+  enabled: boolean,
+  /** 書き込みがサーバに反映されたあとに呼ぶ。一覧の集計を取り直させるため。 */
+  onSynced?: () => void,
+) {
   const [items, setItems] = useState<LocalOrderItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 毎レンダーで作り直される関数を useCallback の依存に入れたくないので ref 越しに持つ。
+  // 更新はレンダー中ではなく effect で行う（レンダー中の ref 書き込みは禁止）。
+  const onSyncedRef = useRef(onSynced);
+  useEffect(() => {
+    onSyncedRef.current = onSynced;
+  });
 
   const reload = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -106,6 +119,9 @@ export function useTabItems(tabId: string, staffId: string, enabled: boolean) {
       }
 
       setItems((prev) => prev.map((item) => (item.id === localId ? data : item)));
+
+      // 書き込みが確定してから通知する。先に呼ぶと、一覧が反映前の集計を読んでしまう。
+      onSyncedRef.current?.();
     },
     [tabId, staffId],
   );
@@ -135,7 +151,10 @@ export function useTabItems(tabId: string, staffId: string, enabled: boolean) {
     if (deleteError || (data?.length ?? 0) !== syncedIds.length) {
       setItems((prev) => [...prev, ...synced]);
       setError("明細を削除できませんでした");
+      return;
     }
+
+    onSyncedRef.current?.();
   }, []);
 
   const addOne = useCallback(
