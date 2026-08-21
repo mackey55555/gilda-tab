@@ -68,9 +68,21 @@ export function useTabItems(
           void reload();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        // 再接続直後は切れていた間の変更を取りこぼしているので読み直す
+        if (status === "SUBSCRIBED") void reload();
+      });
+
+    // Realtime が切れていても、画面に戻ったときに追いつけるようにする
+    const reloadIfVisible = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    document.addEventListener("visibilitychange", reloadIfVisible);
+    window.addEventListener("online", reloadIfVisible);
 
     return () => {
+      document.removeEventListener("visibilitychange", reloadIfVisible);
+      window.removeEventListener("online", reloadIfVisible);
       void supabase.removeChannel(channel);
     };
   }, [enabled, tabId, reload]);

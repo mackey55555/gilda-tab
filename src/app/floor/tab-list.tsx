@@ -25,6 +25,8 @@ import { TabCard } from "./tab-card";
 
 /** 経過時間表示を更新する間隔 */
 const ELAPSED_TICK_MS = 30_000;
+/** Realtime を取りこぼしたときに追いつくための再取得間隔 */
+const SYNC_INTERVAL_MS = 20_000;
 
 type Props = {
   businessDayId: string;
@@ -123,17 +125,39 @@ export function TabList({
 
 
 
-  // 端末 2〜3 台での同時操作を前提に、伝票・明細・会計の変更を購読して作り直す
+  // 端末 2〜3 台での同時操作を前提に、伝票・明細・会計の変更を購読して作り直す。
+  //
+  // ただし Realtime だけには頼らない。スマホは画面を消すと WebSocket が切れ、
+  // 復帰しても再購読が間に合わないことがあるため、実際に「同期するときとしないとき」がある。
+  // 復帰・再接続・一定間隔の 3 系統で取り直して、取りこぼしても必ず追いつくようにする。
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
+
     const channel = supabase
       .channel(`floor:${businessDayId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "tabs" }, () => void refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, () => void refetch())
-      .subscribe();
+      .subscribe((status) => {
+        // 接続直後・再接続直後は、切れていた間の変更を取りこぼしているので取り直す
+        if (status === "SUBSCRIBED") void refetch();
+      });
+
+    const refetchIfVisible = () => {
+      if (document.visibilityState === "visible") void refetch();
+    };
+
+    // 画面に戻ってきたとき / 通信が復帰したとき
+    document.addEventListener("visibilitychange", refetchIfVisible);
+    window.addEventListener("online", refetchIfVisible);
+
+    // 最後の砦。表示中だけ定期的に取り直す（端末 2〜3 台なので負荷は無視できる）
+    const timer = setInterval(refetchIfVisible, SYNC_INTERVAL_MS);
 
     return () => {
+      document.removeEventListener("visibilitychange", refetchIfVisible);
+      window.removeEventListener("online", refetchIfVisible);
+      clearInterval(timer);
       void supabase.removeChannel(channel);
     };
   }, [businessDayId, refetch]);
