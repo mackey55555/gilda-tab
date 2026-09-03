@@ -25,6 +25,8 @@ type Props = {
  */
 export function ProductModal({ title, products, categories, onPick, onClose }: Props) {
   const [activeCategory, setActiveCategory] = useState<string>(ALL);
+  // 使用量を出している商品。1 つだけ開く（並べて出すとグリッドが崩れるため）
+  const [hintId, setHintId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [freeAmount, setFreeAmount] = useState(false);
   const [added, setAdded] = useState<string | null>(null);
@@ -48,6 +50,10 @@ export function ProductModal({ title, products, categories, onPick, onClose }: P
       return inCategory && matches;
     });
   }, [products, activeCategory, keyword]);
+
+  function closeHint() {
+    setHintId(null);
+  }
 
   function pick(item: NewItem) {
     onPick(item);
@@ -81,7 +87,10 @@ export function ProductModal({ title, products, categories, onPick, onClose }: P
             <div className="border-b border-line px-5 py-2">
               <input
                 value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
+                onChange={(event) => {
+                  setKeyword(event.target.value);
+                  closeHint();
+                }}
                 placeholder="商品を検索"
                 enterKeyHint="search"
                 className="min-h-tap w-full rounded-lg border border-line bg-raised px-3 outline-none focus:border-accent"
@@ -89,20 +98,20 @@ export function ProductModal({ title, products, categories, onPick, onClose }: P
             </div>
 
             <div className="flex gap-2 overflow-x-auto border-b border-line px-5 py-2">
-              <CategoryTab label="すべて" active={activeCategory === ALL} onClick={() => setActiveCategory(ALL)} />
+              <CategoryTab label="すべて" active={activeCategory === ALL} onClick={() => { setActiveCategory(ALL); closeHint(); }} />
               {visibleCategories.map((category) => (
                 <CategoryTab
                   key={category.id}
                   label={category.name}
                   active={activeCategory === category.id}
-                  onClick={() => setActiveCategory(category.id)}
+                  onClick={() => { setActiveCategory(category.id); closeHint(); }}
                 />
               ))}
               {hasUncategorized && (
                 <CategoryTab
                   label="未分類"
                   active={activeCategory === UNCATEGORIZED}
-                  onClick={() => setActiveCategory(UNCATEGORIZED)}
+                  onClick={() => { setActiveCategory(UNCATEGORIZED); closeHint(); }}
                 />
               )}
             </div>
@@ -117,15 +126,44 @@ export function ProductModal({ title, products, categories, onPick, onClose }: P
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {visible.map((product) => (
-                    <button
-                      key={product.id}
-                      type="button"
-                      onClick={() => pick({ productId: product.id, name: product.name, price: product.price })}
-                      className="flex min-h-16 flex-col justify-center gap-0.5 rounded-xl border border-line bg-raised px-3 py-2 text-left active:bg-surface"
-                    >
-                      <span className="text-base leading-tight font-bold">{product.name}</span>
-                      <span className="text-xs text-ink-muted tabular-nums">{formatYen(product.price)}</span>
-                    </button>
+                    <div key={product.id} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => pick({ productId: product.id, name: product.name, price: product.price })}
+                        className="flex min-h-16 w-full flex-col justify-center gap-0.5 rounded-xl border border-line bg-raised py-2 pr-9 pl-3 text-left active:bg-surface"
+                      >
+                        <span className="text-base leading-tight font-bold">{product.name}</span>
+                        <span className="text-xs text-ink-muted tabular-nums">
+                          {formatYen(product.price)}
+                        </span>
+                      </button>
+
+                      {product.serving_note && (
+                        <button
+                          type="button"
+                          // 商品ボタンと重ならないよう右上に小さく置く。押しても注文は入らない。
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setHintId((prev) => (prev === product.id ? null : product.id));
+                          }}
+                          aria-label={`${product.name} の使用量`}
+                          aria-expanded={hintId === product.id}
+                          className={`absolute top-1 right-1 grid size-7 place-items-center rounded-full border text-xs font-bold ${
+                            hintId === product.id
+                              ? "border-accent bg-accent text-accent-ink"
+                              : "border-line text-ink-muted"
+                          }`}
+                        >
+                          ！
+                        </button>
+                      )}
+
+                      {hintId === product.id && product.serving_note && (
+                        <p className="mt-1 rounded-lg border border-accent/60 bg-surface px-2 py-1 text-xs text-ink">
+                          {product.serving_note}
+                        </p>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

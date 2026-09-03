@@ -55,7 +55,7 @@ export default async function FloorPage() {
         .order("paid_at", { ascending: false }),
       supabase
         .from("products")
-        .select("id, name, price, category_id")
+        .select("id, name, price, category_id, serving_note")
         .eq("is_active", true)
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true }),
