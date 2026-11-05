@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/admin/categories", label: "カテゴリ" },
   { href: "/admin/staff", label: "スタッフ" },
   { href: "/admin/business-days", label: "営業日" },
+  { href: "/admin/shop", label: "店舗情報" },
 ] as const;
 
 export function AdminNav() {

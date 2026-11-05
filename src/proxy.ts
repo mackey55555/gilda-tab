@@ -68,8 +68,9 @@ function copyCookies(target: NextResponse, source: NextResponse): NextResponse {
 //   manifest / icons … ホーム画面追加時にブラウザが Cookie 無しで取りに来る
 //   sw.js            … Service Worker の登録
 //   offline          … 通信できないときに Service Worker が返す案内
+//   r/               … お客様向けの領収書ページ。ログインせずに QR から開く（鍵は URL のトークン）
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js|offline|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js|offline|r/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
