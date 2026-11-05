@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   // プライベート IP からのリクエストを許可する。開発時のみ影響する設定。
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.16.*.*"],
 
+  // 領収書 PDF のフォントは fs で読むため、Vercel の関数に含まれるよう明示する
+  outputFileTracingIncludes: {
+    "/r/\\[token\\]/pdf": ["./src/assets/fonts/**/*"],
+  },
+
   // /admin の入口。page.tsx の redirect() だと loading.tsx の Suspense 境界により
   // ストリーミングになり、ステータスが 200 になってしまうため設定側で返す。
   async redirects() {

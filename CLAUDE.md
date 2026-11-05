@@ -104,6 +104,7 @@
 - **ダミーの過去データは `scripts/dummy-sales-seed.sh` / `dummy-sales-cleanup.sh` のセットで扱う。** 投入期間は両スクリプトの `DUMMY_FROM`/`DUMMY_TO` で固定。**実運用を始める前に必ず cleanup を実行し、残 0 件を確認する**（1件でも残ると売上集計が汚染される）。
 - **領収書（spec 8 章）は anon が触れる唯一の入口。** テーブルは anon に見せず、`get_receipt(token)` / `finalize_receipt(token, addressee)`（security definer）だけを `anon` に grant する。**Supabase は public の新規関数に anon への EXECUTE を既定で付ける**ので、definer 関数を作ったら `revoke ... from public, anon, authenticated` してから必要な分だけ付け直すこと。
 - 領収書は確定時に番号・宛名・金額・発行者をスナップショットし、以降は変わらない。番号は `receipt_counters` で払い出し、**会計取り消しで領収書が消えても番号は戻さない**（渡した PDF との重複を防ぐ）。消費税額は `receipt_tax()` と `taxBreakdown()` が同じ規則。**片方だけ変えないこと**。
+- **`/r/[token]`（お客様の領収書ページ）は `proxy.ts` の matcher から外してあり、Service Worker も登録しない。** 取得は Cookie を持たない anon クライアント（`src/lib/receipt.ts`）で行う。PDF は `@react-pdf/renderer` をサーバで実行し、フォント（`src/assets/fonts/`）は `next.config.ts` の `outputFileTracingIncludes` で関数に含めている。**フォントの場所を変えるときは両方直すこと**。
 - 回帰テストは以下（いずれもリモートに対して実行し、テストユーザー・データは自動削除される）:
   - `bash scripts/verify-rls.sh` … RLS 32項目
   - `bash scripts/verify-settlement.sh` … 会計 RPC 24項目（open な営業日があると中断する）
