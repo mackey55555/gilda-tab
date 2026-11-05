@@ -6,6 +6,7 @@ import { formatYen } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PaymentSummary } from "@/lib/types";
 
+import { ReceiptQr } from "./receipt-qr";
 import { TaxNote } from "./tax-note";
 
 type Props = {
@@ -22,6 +23,7 @@ export function PaidSection({ payments, onVoided }: Props) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [receiptFor, setReceiptFor] = useState<PaymentSummary | null>(null);
 
   if (payments.length === 0) return null;
 
@@ -112,16 +114,28 @@ export function PaidSection({ payments, onVoided }: Props) {
                   </button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setConfirmingId(payment.id);
-                  }}
-                  className="mt-1 min-h-tap text-sm text-ink-muted"
-                >
-                  会計を取り消す
-                </button>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setConfirmingId(payment.id);
+                    }}
+                    className="min-h-tap text-sm text-ink-muted"
+                  >
+                    会計を取り消す
+                  </button>
+                  {/* 0 円以下の会計は RPC 側でも発行を拒否する */}
+                  {payment.total > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptFor(payment)}
+                      className="min-h-tap rounded-lg border border-accent px-4 text-sm text-accent"
+                    >
+                      領収書
+                    </button>
+                  )}
+                </div>
               )}
             </li>
           ))}
@@ -132,6 +146,14 @@ export function PaidSection({ payments, onVoided }: Props) {
         <p role="alert" className="px-4 pb-2 text-sm text-danger">
           {error}
         </p>
+      )}
+
+      {receiptFor && (
+        <ReceiptQr
+          paymentId={receiptFor.id}
+          total={receiptFor.total}
+          onClose={() => setReceiptFor(null)}
+        />
       )}
     </section>
   );

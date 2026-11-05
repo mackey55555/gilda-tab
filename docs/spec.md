@@ -107,7 +107,7 @@ payments     … 会計 (id, business_day_id, total, staff_id, paid_at)
 
 ### 流れ
 
-1. `/floor` の会計済み一覧で「領収書」→ QR を全画面表示（お客様向け表示と同じく横向き）
+1. `/floor` の会計済み一覧で「領収書」→ QR を全画面表示（QR は向きを問わないので回転しない。白い台紙に載せる）
 2. お客様が QR を読む → ログイン不要の `/r/<token>` が開く
 3. 宛名を入力して確定 → PDF ダウンロード / 共有（`navigator.share`、非対応端末は `mailto:`）
 
