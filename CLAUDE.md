@@ -102,11 +102,14 @@
 - **時間帯別集計は 0〜5 時台を 24〜29 時台に正規化**して返す（`sales_by_hour`）。営業の流れ通りに並べるため。
 - CSV は **UTF-8 BOM 付き**で返す（Excel の文字化け対策）。不可視文字はソースに直接置かず `"﻿"` と書く。なお `Response.text()` は BOM を除去するので、テストで確認するときはバイト列を見ること。
 - **ダミーの過去データは `scripts/dummy-sales-seed.sh` / `dummy-sales-cleanup.sh` のセットで扱う。** 投入期間は両スクリプトの `DUMMY_FROM`/`DUMMY_TO` で固定。**実運用を始める前に必ず cleanup を実行し、残 0 件を確認する**（1件でも残ると売上集計が汚染される）。
+- **領収書（spec 8 章）は anon が触れる唯一の入口。** テーブルは anon に見せず、`get_receipt(token)` / `finalize_receipt(token, addressee)`（security definer）だけを `anon` に grant する。**Supabase は public の新規関数に anon への EXECUTE を既定で付ける**ので、definer 関数を作ったら `revoke ... from public, anon, authenticated` してから必要な分だけ付け直すこと。
+- 領収書は確定時に番号・宛名・金額・発行者をスナップショットし、以降は変わらない。番号は `receipt_counters` で払い出し、**会計取り消しで領収書が消えても番号は戻さない**（渡した PDF との重複を防ぐ）。消費税額は `receipt_tax()` と `taxBreakdown()` が同じ規則。**片方だけ変えないこと**。
 - 回帰テストは以下（いずれもリモートに対して実行し、テストユーザー・データは自動削除される）:
   - `bash scripts/verify-rls.sh` … RLS 32項目
   - `bash scripts/verify-settlement.sh` … 会計 RPC 24項目（open な営業日があると中断する）
   - `bash scripts/verify-admin.sh` … /admin の権限と RPC 20項目
   - `bash scripts/verify-sales.sh` … 集計 RPC の値が手計算と一致するか 20項目
+  - `bash scripts/verify-receipt.sh` … 領収書の権限・採番・スナップショット 33項目（open な営業日があると中断する）
   - `node scripts/verify-floor.cjs` / `node scripts/verify-admin-pages.cjs` … 画面描画（要 dev server）
   - **検証スクリプトの後片付けは必ず「自分が作った行」だけを対象にする。** `business_day_id` などで括ると運用中のデータを巻き込む（実際に会計データを消す事故を起こした）。
 

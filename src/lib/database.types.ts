@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   graphql_public: {
     Tables: {
@@ -235,6 +235,127 @@ export type Database = {
           },
         ]
       }
+      receipt_counters: {
+        Row: {
+          last_seq: number
+          receipt_date: string
+        }
+        Insert: {
+          last_seq: number
+          receipt_date: string
+        }
+        Update: {
+          last_seq?: number
+          receipt_date?: string
+        }
+        Relationships: []
+      }
+      receipts: {
+        Row: {
+          addressee: string | null
+          amount: number | null
+          created_at: string
+          expires_at: string
+          finalized_at: string | null
+          id: string
+          issued_by: string | null
+          issuer_address: string | null
+          issuer_name: string | null
+          issuer_phone: string | null
+          number: string | null
+          payment_id: string
+          receipt_date: string | null
+          registration_number: string | null
+          tax: number | null
+          token: string
+        }
+        Insert: {
+          addressee?: string | null
+          amount?: number | null
+          created_at?: string
+          expires_at: string
+          finalized_at?: string | null
+          id?: string
+          issued_by?: string | null
+          issuer_address?: string | null
+          issuer_name?: string | null
+          issuer_phone?: string | null
+          number?: string | null
+          payment_id: string
+          receipt_date?: string | null
+          registration_number?: string | null
+          tax?: number | null
+          token: string
+        }
+        Update: {
+          addressee?: string | null
+          amount?: number | null
+          created_at?: string
+          expires_at?: string
+          finalized_at?: string | null
+          id?: string
+          issued_by?: string | null
+          issuer_address?: string | null
+          issuer_name?: string | null
+          issuer_phone?: string | null
+          number?: string | null
+          payment_id?: string
+          receipt_date?: string | null
+          registration_number?: string | null
+          tax?: number | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "payment_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_settings: {
+        Row: {
+          address: string
+          id: boolean
+          name: string
+          phone: string
+          registration_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          address: string
+          id?: boolean
+          name: string
+          phone: string
+          registration_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string
+          id?: boolean
+          name?: string
+          phone?: string
+          registration_number?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       staff: {
         Row: {
           created_at: string
@@ -381,8 +502,31 @@ export type Database = {
         Returns: boolean
       }
       current_business_date: { Args: never; Returns: string }
+      finalize_receipt: {
+        Args: { addressee: string; receipt_token: string }
+        Returns: string
+      }
+      get_receipt: {
+        Args: { receipt_token: string }
+        Returns: {
+          addressee: string
+          amount: number
+          expires_at: string
+          finalized: boolean
+          issuer_address: string
+          issuer_name: string
+          issuer_phone: string
+          number: string
+          receipt_date: string
+          registration_number: string
+          tax: number
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
+      issue_receipt: { Args: { target_payment_id: string }; Returns: string }
       product_is_used: { Args: { target_product_id: string }; Returns: boolean }
+      receipt_amount: { Args: { target_payment_id: string }; Returns: number }
+      receipt_tax: { Args: { amount: number }; Returns: number }
       reorder_categories: {
         Args: { category_ids: string[] }
         Returns: undefined
