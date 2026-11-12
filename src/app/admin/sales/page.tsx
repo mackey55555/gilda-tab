@@ -44,7 +44,7 @@ export default async function SalesPage({
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold">売上集計</h1>
-        <PeriodPicker period={period} />
+        <PeriodPicker key={`${period.from}_${period.to}`} period={period} />
       </div>
 
       {daily.error && (
