@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 
 import { presetRange, type Period, type PresetKey } from "@/lib/sales";
 
@@ -12,14 +11,24 @@ const PRESETS: { key: Exclude<PresetKey, "custom">; label: string }[] = [
   { key: "last-30", label: "直近30日" },
 ];
 
-/** 期間は URL の searchParams に持たせる。リロードやブックマークで再現できるようにするため。 */
+/**
+ * 期間は URL の searchParams に持たせる。リロードやブックマークで再現できるようにするため。
+ * 日付の入力欄は URL が変わっても初期値のまま残るので、呼び出し側で period ごとに key を変えて作り直す。
+ */
 export function PeriodPicker({ period }: { period: Period }) {
   const router = useRouter();
   const [from, setFrom] = useState(period.from);
   const [to, setTo] = useState(period.to);
+  const [pending, startTransition] = useTransition();
 
-  function apply() {
-    router.push(`/admin/sales?from=${from}&to=${to}`);
+  const unchanged = from === period.from && to === period.to;
+  const invalid = !from || !to || from > to;
+
+  // 集計の再取得には少し時間がかかるので、押した時点で入力欄とボタンの見た目を先に変える
+  function show(nextFrom: string, nextTo: string) {
+    setFrom(nextFrom);
+    setTo(nextTo);
+    startTransition(() => router.push(`/admin/sales?from=${nextFrom}&to=${nextTo}`));
   }
 
   return (
@@ -27,19 +36,21 @@ export function PeriodPicker({ period }: { period: Period }) {
       <div className="flex items-center gap-2">
         {PRESETS.map((preset) => {
           const range = presetRange(preset.key);
-          const active = period.preset === preset.key;
+          const active = range.from === from && range.to === to;
           return (
-            <Link
+            <button
               key={preset.key}
-              href={`/admin/sales?from=${range.from}&to=${range.to}`}
-              className={`rounded-full border px-3 py-1 text-sm ${
+              type="button"
+              onClick={() => show(range.from, range.to)}
+              disabled={pending}
+              className={`rounded-full border px-3 py-1 text-sm select-none ${
                 active
                   ? "border-accent bg-accent font-bold text-accent-ink"
-                  : "border-line text-ink-muted"
+                  : "border-line text-ink-muted hover:border-accent hover:text-ink"
               }`}
             >
               {preset.label}
-            </Link>
+            </button>
           );
         })}
       </div>
@@ -65,10 +76,12 @@ export function PeriodPicker({ period }: { period: Period }) {
         </label>
         <button
           type="button"
-          onClick={apply}
-          className="h-9 rounded-lg border border-line px-3 text-sm"
+          onClick={() => show(from, to)}
+          disabled={pending || unchanged || invalid}
+          title={unchanged ? "いま表示している期間です" : invalid ? "開始日は終了日以前にしてください" : undefined}
+          className="h-9 rounded-lg border border-accent px-3 text-sm font-bold text-accent select-none hover:bg-accent hover:text-accent-ink active:opacity-70 disabled:border-line disabled:font-normal disabled:text-ink-muted disabled:hover:bg-transparent"
         >
-          この期間で表示
+          {pending ? "表示中…" : "この期間で表示"}
         </button>
       </div>
     </div>
